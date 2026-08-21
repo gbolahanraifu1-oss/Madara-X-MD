@@ -1,0 +1,1 @@
+module.exports={name:'chatopen',aliases:['opengroup','openchat'],category:'group',desc:'Open group for all members',usage:'†chatopen',groupOnly:true,adminOnly:true,botAdminNeeded:true, async execute(sock,msg,args,ctx){const s=ctx.settings;await sock.groupSettingUpdate(ctx.from,'not_announcement');ctx.reply(`✅ Group *OPEN* — all members can chat.${s.FOOTER}`);}}; 

@@ -1,0 +1,100 @@
+╔══════════════════════════════════════════════════════════════╗
+║   MADARA X-MD V1.0.6 — DEPLOYMENT GUIDE                     ║
+╚══════════════════════════════════════════════════════════════╝
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✨ NEW IN v1.0.6
+
+TELEGRAM BOT:
+  ✅ 22 commands registered with proper access levels
+  ✅ Owner-only protection (from .env OWNER_ID)
+  ✅ Admin-only commands (from .env ADMIN_ID)
+  ✅ Global broadcast to all active sessions
+  ✅ Global announcements to all Telegram users
+  ✅ Session tracking (real-time paired numbers)
+
+WHATSAPP BOT:
+  ✅ Antidelete — Restore deleted messages
+  ✅ DMBlocker — Auto-block strangers
+  ✅ Permit — Permission system
+  ✅ Banish — Permanent auto-kick
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 SETUP STEPS
+
+1. CREATE .env FILE
+
+Copy .env.example → .env and configure:
+
+  OWNER_ID=YOUR_TELEGRAM_ID,OTHER_OWNER_ID
+  ADMIN_ID=ADMIN_TELEGRAM_ID,ANOTHER_ADMIN_ID
+
+Examples:
+  OWNER_ID=123456789,987654321
+  ADMIN_ID=111111111,222222222
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2. INSTALL & RUN
+
+  npm install
+  npm start
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 COMMAND PERMISSIONS
+
+QUICK ACTIONS (All users):
+  /start /pair /unpair /ping /runtime /stats /report /tutorial /help
+
+ADMIN CONTROL (Admin + Owner):
+  /users /listpair /broadcast /clean /ban /unban 
+  /checkuser /maintenance /logs /announce
+
+OWNER ONLY:
+  /addadmin /removeadmin /restart
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚡ WHATSAPP FEATURES
+
+Antidelete:
+  †antidelete on  — Enable message restoration
+  †antidelete off — Disable
+
+DMBlocker (Owner only):
+  †dmblock on  — Block strangers
+  †dmblock off — Disable
+
+Permit (Owner only):
+  †permit @user        — Unblock user
+  †permit [number]     — Unblock by number
+
+Banish:
+  †banish @user        — Permanent ban
+  †banish [number]     — Ban by number
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📁 FILE CHANGES
+
+UPDATED:
+  lib/telegram.js  — All new commands + permission checks
+
+CREATED:
+  commands/system/antidelete.js
+  commands/system/dmblock.js
+  commands/system/permit.js
+  commands/system/banish.js
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ READY TO DEPLOY
+
+Version:  v1.0.6
+Branding: MADARA X-MD
+Status:   Production Ready
+
+Dark. Fast. Unstoppable. ⚡

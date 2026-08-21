@@ -1,0 +1,2 @@
+module.exports = { name: 'snake', aliases: ['snakegame'], category: 'fun', desc: 'Text-based snake game status', usage: '†snake',
+    async execute(sock, msg, args, ctx) { const s=ctx.settings; ctx.reply(`🐍 *Snake Game:*\n\n\`\`\`\n⬛⬛⬛⬛⬛⬛⬛⬛\n⬛🍎⬛⬛⬛⬛⬛⬛\n⬛⬛⬛🟩🟩⬛⬛⬛\n⬛⬛⬛⬛🟩🟩🔲⬛\n⬛⬛⬛⬛⬛⬛⬛⬛\n\`\`\`\n🔲 Head | 🟩 Body | 🍎 Food\nScore: *0* | Level: *1*\n\n_Full interactive snake requires a web interface._${s.FOOTER}`); } };

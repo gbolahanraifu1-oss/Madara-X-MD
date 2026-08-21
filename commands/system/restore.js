@@ -1,0 +1,3 @@
+const fs=require('fs'),path=require('path');
+module.exports = { name: 'restore', aliases: ['restorebackup','restoredb'], category: 'system', desc: 'Restore bot DB from backup', usage: '†restore', ownerOnly: true,
+    async execute(sock, msg, args, ctx) { const s=ctx.settings; const bak=path.join(process.cwd(),'backup_db.json'); if(!fs.existsSync(bak)) return ctx.reply(`❌ No backup found. Run \`${s.prefix}backup\` first.${s.FOOTER}`); try { const dest=path.join(process.cwd(),'data','db.json'); fs.mkdirSync(path.dirname(dest),{recursive:true}); fs.copyFileSync(bak,dest); ctx.reply(`✅ Database restored!${s.FOOTER}`); } catch(e){ctx.reply(`❌ Restore failed: ${e.message}${s.FOOTER}`);} } };

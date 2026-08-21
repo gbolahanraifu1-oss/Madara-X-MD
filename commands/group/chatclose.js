@@ -1,0 +1,1 @@
+module.exports={name:'chatclose',aliases:['closegroup','closechat'],category:'group',desc:'Close group to admins only',usage:'†chatclose',groupOnly:true,adminOnly:true,botAdminNeeded:true, async execute(sock,msg,args,ctx){const s=ctx.settings;await sock.groupSettingUpdate(ctx.from,'announcement');ctx.reply(`🔒 Group *CLOSED* — only admins can chat.${s.FOOTER}`);}}; 

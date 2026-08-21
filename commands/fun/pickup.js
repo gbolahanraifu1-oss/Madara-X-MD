@@ -1,0 +1,4 @@
+'use strict';
+const P=['Are you a magician? Because whenever I look at you, everyone else disappears.','Do you have a map? I keep getting lost in your eyes.','Are you a parking ticket? You have fine written all over you.','Do you believe in love at first sight, or should I walk by again?','Is your name Google? Because you have everything I have been searching for.','Are you a bank loan? Because you have got my interest.','Do you have a sunburn, or are you always this hot?','Are you a camera? Because every time I look at you, I smile.'];
+module.exports={name:'pickup',aliases:['pickupline','flirt'],category:'fun',desc:'ɢᴇᴛ ᴀ ᴘɪᴄᴋᴜᴘ ʟɪɴᴇ',usage:'†pickup',
+    async execute(sock,msg,args,ctx){const s=ctx.settings;await ctx.reply(`😏 *ᴘɪᴄᴋᴜᴘ ʟɪɴᴇ*\n\n${P[Math.floor(Math.random()*P.length)]}${s.FOOTER}`);}};
