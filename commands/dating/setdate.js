@@ -1,0 +1,1 @@
+const d=require('../../lib/dating');module.exports={name:'setdate',category:'dating',desc:'Edit your dating profile',usage:'†setdate bio I love music',privateOnly:true,async execute(s,m,a,c){return d.setDate(c,a);}};
