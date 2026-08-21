@@ -1,0 +1,1 @@
+const d=require('../../lib/dating');module.exports={name:'reject',aliases:['rejectdate','decline'],category:'dating',desc:'Reject a date proposal',usage:'†reject',privateOnly:true,async execute(s,m,a,c){return d.reject(s,m,c);}};
