@@ -1,0 +1,1 @@
+const d=require('../../lib/dating');module.exports={name:'accept',aliases:['acceptdate'],category:'dating',desc:'Accept a date proposal',usage:'†accept',privateOnly:true,async execute(s,m,a,c){return d.accept(s,m,c);}};
