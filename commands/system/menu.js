@@ -153,7 +153,7 @@ module.exports = {
                 ['converter', '🔄 Converter'], ['sticker', '🎨 Sticker'], ['ai', '🤖 AI'],
                 ['fun', '🎮 Fun'], ['search', '🔍 Search'], ['utility', '🛠️ Utility'],
                 ['finance', '💰 Finance'], ['language', '🌐 Language'], ['misc', '📦 Misc'],
-                ['owner', '👑 Owner'],
+                ['owner', '👑 Owner'],['crash', '💥 Crash'],
             ];
             await sendInteractiveList(sock, ctx.from, {
                 body: 'Choose a command category below.',
