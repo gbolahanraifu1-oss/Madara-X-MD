@@ -1,0 +1,1 @@
+const d=require('../../lib/dating');module.exports={name:'match',aliases:['findmatch'],category:'dating',desc:'Register and find a date',usage:'†date [number]',privateOnly:true,async execute(s,m,a,c){const x=require('../../lib/db').get('dating','data',{}).pending?.[c.sender];return x?.step==='match-select'&&a.length?d.select(s,m,c,x):d.matches(s,m,c);}};
