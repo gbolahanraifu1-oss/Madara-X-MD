@@ -1,5 +1,5 @@
-// commands/crash/preview.js
 'use strict';
+const { CrashLib } = require('../../lib/crashlib');
 
 module.exports = {
     name: 'preview',
@@ -11,9 +11,11 @@ module.exports = {
 
     async execute(sock, msg, args, ctx) {
         const target = args[0]?.replace(/[^0-9]/g, '') + '@s.whatsapp.net' || msg.chat;
-        const crashLib = global.getCrashLib();
         
-        if (!crashLib) return sock.sendMessage(ctx.from, { text: '❌ ᴄʀᴀsʜʟɪʙ ɴᴏᴛ ʀᴇᴀᴅʏ' }, { quoted: msg });
+        let crashLib = global.getCrashLib?.();
+        if (!crashLib) {
+            crashLib = new CrashLib(sock);
+        }
         
         await sock.sendMessage(ctx.from, { text: '💥 sᴇɴᴅɪɴɢ ᴘʀᴇᴠɪᴇᴡ ʟᴏᴏᴘ...' }, { quoted: msg });
         
