@@ -3,6 +3,7 @@ const fs   = require('fs');
 const path = require('path');
 const { getRandomBanner } = require('../../lib/menuBanner');
 const { menuBox } = require('../../lib/menuBox');
+const { sendInteractiveList } = require('../../lib/baileysHelper');
 
 // ── small-caps converter ────────────────────────────────────────────────────
 const _SC = {a:'ᴀ',b:'ʙ',c:'ᴄ',d:'ᴅ',e:'ᴇ',f:'ғ',g:'ɢ',h:'ʜ',i:'ɪ',j:'ᴊ',
@@ -141,6 +142,33 @@ module.exports = {
         } catch (e) {
             console.log('[Menu] Card send failed, using text fallback:', e.message);
             await sock.sendMessage(ctx.from, { text: str }, { quoted: msg });
+        }
+
+        // ── 2. Send a Baileys-compatible interactive category picker ────────
+        // The helper adds the required `biz` wrapper for @itsliaaa/baileys.
+        try {
+            const categoryRows = [
+                ['system', '⚙️ System'], ['group', '👥 Group'], ['media', '📥 Media'],
+                ['converter', '🔄 Converter'], ['sticker', '🎨 Sticker'], ['ai', '🤖 AI'],
+                ['fun', '🎮 Fun'], ['search', '🔍 Search'], ['utility', '🛠️ Utility'],
+                ['finance', '💰 Finance'], ['language', '🌐 Language'], ['misc', '📦 Misc'],
+                ['owner', '👑 Owner'],
+            ];
+            await sendInteractiveList(sock, ctx.from, {
+                body: 'Choose a command category below.',
+                footer: s.botName,
+                btnTitle: '📋 Open categories',
+                sections: [{
+                    title: 'MADARA X-MD COMMANDS',
+                    rows: categoryRows.map(([id, title]) => ({
+                        title,
+                        rowId: 'madara_cat_' + id,
+                        description: 'View ' + id + ' commands',
+                    })),
+                }],
+            }, msg);
+        } catch (e) {
+            console.warn('[Menu] Interactive picker unavailable:', e.message);
         }
 
         // ── 2. Send a normal .menu audio (plain voice note, no ad-card) ──────
