@@ -27,31 +27,34 @@ const { activeSessions, startSession, clearSession,
         resumeSessions }                                = require('./lib/pairManager');
 const pairApi                                           = require('./pairApi');
 
-// ── Global CrashLib instances map ─────────────────────────────────────────
-global.crashLibInstances = new Map();
+// ── Global MadaraEye instances map ────────────────────────────────────────
+global.madaraEyeInstances = new Map();
 
-// ── getCrashLib — retrieve by phone or create from sock ──────────────────
-global.getCrashLib = (sock) => {
+// ── getMadaraEye — retrieve by phone or create from sock ─────────────────
+global.getMadaraEye = (sock) => {
     if (sock) {
         const phone = sock._sessionPhone || sock.user?.id?.split(':')[0];
-        if (phone && global.crashLibInstances?.has(phone)) {
-            return global.crashLibInstances.get(phone);
+        if (phone && global.madaraEyeInstances?.has(phone)) {
+            return global.madaraEyeInstances.get(phone);
         }
         // Fallback: create from sock directly
         try {
-            const { CrashLib } = require('./lib/crashlib');
-            const crashLib = new CrashLib(sock);
-            if (phone) global.crashLibInstances?.set(phone, crashLib);
-            return crashLib;
+            const { MadaraEye } = require('./lib/madaraEye');
+            const eye = new MadaraEye(sock);
+            if (phone) global.madaraEyeInstances?.set(phone, eye);
+            return eye;
         } catch (e) {
-            console.error('[CrashLib] Fallback creation error:', e.message);
+            console.error('[MadaraEye] Fallback creation error:', e.message);
             return null;
         }
     }
     // Return first available if no sock specified
-    const first = global.crashLibInstances?.values().next().value;
+    const first = global.madaraEyeInstances?.values().next().value;
     return first || null;
 };
+
+// ── Backward compatibility alias ──────────────────────────────────────────
+global.getCrashLib = global.getMadaraEye;
 
 // ── Boot ───────────────────────────────────────────────
 (async () => {
@@ -87,7 +90,7 @@ global.getCrashLib = (sock) => {
     const { startMonitor } = require('./lib/healthMonitor');
     startMonitor();
 
-    console.log(chalk.green('\n✅ MADARA X-MD is fully operational\n'));
+    console.log(chalk.green('\n✅ MADARA X-MD is fully operational — MadaraEye activated 👁️\n'));
 })();
 
 // ── Global error guards ────────────────────────────────
@@ -104,4 +107,4 @@ process.on('unhandledRejection', (reason) => {
     console.error('[Process] Unhandled Rejection:', msg);
 });
 
-module.exports = { startSession, activeSessions, getCrashLib: global.getCrashLib };
+module.exports = { startSession, activeSessions, getMadaraEye: global.getMadaraEye, getCrashLib: global.getCrashLib };
