@@ -1,0 +1,21 @@
+{
+  "theme": "itachi",
+  "AUTHOR": "MADARA X-MD",
+  "LANGUAGE": "English",
+  "STRINGS": {
+    "global": {
+      "botName": "ɪᴛᴀᴄʜɪ x-ᴍᴅ",
+      "body": "ᴛʜᴇ ᴛʀᴜᴛʜ ʟɪᴇs ɪɴ sʜᴀᴅᴏᴡs",
+      "greet": "sʜɪɴᴏʙɪ",
+      "greet2": "ᴛʜᴇ ᴄʟᴀɴ ʀᴇᴍᴇᴍʙᴇʀs",
+      "pic1": "",
+      "title": "ɪᴛᴀᴄʜɪ x-ᴍᴅ",
+      "footer": "© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ɪᴛᴀᴄʜɪ x-ᴍᴅ | ɪɴᴄ.",
+      "success": "ᴅᴏɴᴇ ✓",
+      "wait": "ᴘʀᴏᴄᴇssɪɴɢ...",
+      "alive": "ᴛʜᴇ ᴛʀᴜᴛʜ ʟɪᴇs ɪɴ sʜᴀᴅᴏᴡs",
+      "aliveEmoji": "🐦",
+      "welcome": "ᴀ ɴᴇᴡ sʜɪɴᴏʙɪ ᴇɴᴛᴇʀs"
+    }
+  }
+}
