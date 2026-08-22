@@ -1,0 +1,21 @@
+{
+  "theme": "sharingan",
+  "AUTHOR": "MADARA X-MD",
+  "LANGUAGE": "English",
+  "STRINGS": {
+    "global": {
+      "botName": "sʜᴀʀɪɴɢᴀɴ x-ᴍᴅ",
+      "body": "ᴛʜᴇ ᴇʏᴇ sᴇᴇs ᴀʟʟ",
+      "greet": "sʜɪɴᴏʙɪ",
+      "greet2": "ᴛʜᴇ ᴄʟᴀɴ ʀᴇᴍᴇᴍʙᴇʀs",
+      "pic1": "",
+      "title": "sʜᴀʀɪɴɢᴀɴ x-ᴍᴅ",
+      "footer": "© ᴘᴏᴡᴇʀᴇᴅ ʙʏ sʜᴀʀɪɴɢᴀɴ x-ᴍᴅ | ɪɴᴄ.",
+      "success": "ᴅᴏɴᴇ ✓",
+      "wait": "ᴘʀᴏᴄᴇssɪɴɢ...",
+      "alive": "ᴛʜᴇ ᴇʏᴇ sᴇᴇs ᴀʟʟ",
+      "aliveEmoji": "🔴",
+      "welcome": "ᴀ ɴᴇᴡ sʜɪɴᴏʙɪ ᴇɴᴛᴇʀs"
+    }
+  }
+}
