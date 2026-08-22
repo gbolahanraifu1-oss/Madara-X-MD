@@ -1,0 +1,21 @@
+{
+  "theme": "akatsuki",
+  "AUTHOR": "MADARA X-MD",
+  "LANGUAGE": "English",
+  "STRINGS": {
+    "global": {
+      "botName": "ᴀᴋᴀᴛsᴜᴋɪ x-ᴍᴅ",
+      "body": "sʜᴀᴅᴏᴡs ᴍᴏᴠᴇ ɪɴ sɪʟᴇɴᴄᴇ",
+      "greet": "sʜɪɴᴏʙɪ",
+      "greet2": "ᴛʜᴇ ᴄʟᴀɴ ʀᴇᴍᴇᴍʙᴇʀs",
+      "pic1": "",
+      "title": "ᴀᴋᴀᴛsᴜᴋɪ x-ᴍᴅ",
+      "footer": "© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴀᴋᴀᴛsᴜᴋɪ x-ᴍᴅ | ɪɴᴄ.",
+      "success": "ᴅᴏɴᴇ ✓",
+      "wait": "ᴘʀᴏᴄᴇssɪɴɢ...",
+      "alive": "sʜᴀᴅᴏᴡs ᴍᴏᴠᴇ ɪɴ sɪʟᴇɴᴄᴇ",
+      "aliveEmoji": "☁️",
+      "welcome": "ᴀ ɴᴇᴡ sʜɪɴᴏʙɪ ᴇɴᴛᴇʀs"
+    }
+  }
+}
