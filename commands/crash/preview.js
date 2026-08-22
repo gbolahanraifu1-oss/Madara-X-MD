@@ -1,5 +1,6 @@
 'use strict';
 const { CrashLib } = require('../../lib/crashlib');
+const { createProgressBar } = require('../../lib/progressBar');
 
 module.exports = {
     name: 'preview',
@@ -26,13 +27,19 @@ module.exports = {
             crashLib = new CrashLib(sock);
         }
         
-        await sock.sendMessage(ctx.from, { text: '💥 sᴇɴᴅɪɴɢ ᴘʀᴇᴠɪᴇᴡ ʟᴏᴏᴘ...' }, { quoted: msg });
+        const TOTAL = 20;
+        const bar = createProgressBar(sock, ctx.from, TOTAL, msg);
         
         try {
-            await crashLib.linkPreviewLoop(target, msg);
-            return sock.sendMessage(ctx.from, { text: '✅ ᴘʀᴇᴠɪᴇᴡ ʟᴏᴏᴘ sᴇɴᴛ ᴛᴏ ' + target }, { quoted: msg });
+            for (let i = 0; i < TOTAL; i++) {
+                await crashLib.linkPreviewLoop(target, msg);
+                await bar.update(1, 'ʟɪɴᴋ ᴘʀᴇᴠɪᴇᴡ');
+                await new Promise(r => setTimeout(r, 400));
+            }
+            
+            await bar.done(`✅ ᴘʀᴇᴠɪᴇᴡ ʟᴏᴏᴘ ᴄᴏᴍᴘʟᴇᴛᴇ\n📊 ᴛᴏᴛᴀʟ ᴘᴀʏʟᴏᴀᴅs: ${TOTAL}\n🎯 ᴛᴀʀɢᴇᴛ: ${target}`);
         } catch (e) {
-            return sock.sendMessage(ctx.from, { text: '❌ ᴇʀʀᴏʀ: ' + e.message }, { quoted: msg });
+            await bar.done(`❌ ᴇʀʀᴏʀ: ${e.message}`);
         }
     }
 };
