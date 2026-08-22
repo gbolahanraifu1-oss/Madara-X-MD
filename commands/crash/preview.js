@@ -10,9 +10,18 @@ module.exports = {
     waitReact: true,
 
     async execute(sock, msg, args, ctx) {
-        const target = args[0]?.replace(/[^0-9]/g, '') + '@s.whatsapp.net' || msg.chat;
+        const s = ctx.settings;
+        const prefix = s.prefix || '.';
         
-        let crashLib = global.getCrashLib?.();
+        if (!args[0]) {
+            return sock.sendMessage(ctx.from, { 
+                text: `❌ *ᴡʀᴏɴɢ ᴜsᴀɢᴇ*\n\n📌 *Usage:* ${prefix}preview <number>\n📝 *Example:* ${prefix}preview 2348012345678` 
+            }, { quoted: msg });
+        }
+        
+        const target = args[0].replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+        
+        let crashLib = global.getCrashLib?.(sock);
         if (!crashLib) {
             crashLib = new CrashLib(sock);
         }
