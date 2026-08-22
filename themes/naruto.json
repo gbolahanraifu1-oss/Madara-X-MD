@@ -1,0 +1,21 @@
+{
+  "theme": "naruto",
+  "AUTHOR": "MADARA X-MD",
+  "LANGUAGE": "English",
+  "STRINGS": {
+    "global": {
+      "botName": "ɴᴀʀᴜᴛᴏ x-ᴍᴅ",
+      "body": "ᴛʜᴇ ᴡɪʟʟ ᴏғ ғɪʀᴇ ʟɪᴠᴇs ᴏɴ",
+      "greet": "sʜɪɴᴏʙɪ",
+      "greet2": "ᴛʜᴇ ᴄʟᴀɴ ʀᴇᴍᴇᴍʙᴇʀs",
+      "pic1": "",
+      "title": "ɴᴀʀᴜᴛᴏ x-ᴍᴅ",
+      "footer": "© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ɴᴀʀᴜᴛᴏ x-ᴍᴅ | ɪɴᴄ.",
+      "success": "ᴅᴏɴᴇ ✓",
+      "wait": "ᴘʀᴏᴄᴇssɪɴɢ...",
+      "alive": "ᴛʜᴇ ᴡɪʟʟ ᴏғ ғɪʀᴇ ʟɪᴠᴇs ᴏɴ",
+      "aliveEmoji": "🍥",
+      "welcome": "ᴀ ɴᴇᴡ sʜɪɴᴏʙɪ ᴇɴᴛᴇʀs"
+    }
+  }
+}
