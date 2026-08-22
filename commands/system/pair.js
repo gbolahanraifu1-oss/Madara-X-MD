@@ -152,6 +152,8 @@ module.exports = {
             const senderJid = ctx.sender;
             const codeMsg   = '*' + s.botName + ' PAIRING CODE*\n\n' +
                               'Your pairing code is: *' + code + '*';
+            // Send the code again alone so it can be copied directly.
+            const codeOnlyMsg = code;
 
             // PRIMARY: reply in group and @tag the requester
             let groupSent = false;
@@ -161,6 +163,7 @@ module.exports = {
                     mentions: [senderJid],
                     ...channelCtx
                 }, { quoted: msg });
+                await sock.sendMessage(ctx.from, { text: codeOnlyMsg });
                 groupSent = true;
             } catch (_e) {}
 
@@ -171,6 +174,7 @@ module.exports = {
                         text: codeMsg,
                         ...channelCtx
                     });
+                    await sock.sendMessage(senderJid, { text: codeOnlyMsg });
                 } catch (_e) {}
             }
 
