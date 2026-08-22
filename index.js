@@ -3,9 +3,7 @@
 // ║   © 2026 MADARA X-MD INC. — All Rights Reserved           ║
 // ╚══════════════════════════════════════════════════════╝
 
-// ── Global crash guards — keep bot alive on unhandled errors ─────────────
 process.on('uncaughtException', (err) => {
-    // ECONNRESET and similar are normal network noise — don't crash
     const noise = ['ECONNRESET','ETIMEDOUT','EPIPE','ENOTFOUND','EFATAL','Connection Closed'];
     if (noise.some(n => err.message?.includes(n))) return;
     console.error('[uncaughtException]', err.message);
@@ -31,19 +29,33 @@ const pairApi                                           = require('./pairApi');
 // ── Import CrashLib ──────────────────────────────────────────────────────
 const { CrashLib } = require('./lib/crashlib');
 
-// ── Global crashLib instance — will be set after sock is created ────────
-let crashLib = null;
+// ── Global crashLib storage ──────────────────────────────────────────────
+global.crashLibInstances = new Map();
 
 // ── Helper to attach crashLib to a session ───────────────────────────────
 function attachCrashLib(sock) {
     if (!sock) return null;
-    crashLib = new CrashLib(sock);
+    const crashLib = new CrashLib(sock);
+    global.crashLibInstances.set(sock.user?.id || 'default', crashLib);
     console.log(chalk.magenta('✅ CrashLib attached to session'));
     return crashLib;
 }
 
 // ── Expose crashLib globally for command handlers ────────────────────────
-global.getCrashLib = () => crashLib;
+global.getCrashLib = (sock) => {
+    if (sock) {
+        const key = sock.user?.id || 'default';
+        if (global.crashLibInstances.has(key)) {
+            return global.crashLibInstances.get(key);
+        }
+        // Create on-the-fly if not exists
+        return attachCrashLib(sock);
+    }
+    // Return first available if no sock specified
+    const first = global.crashLibInstances.values().next().value;
+    return first || null;
+};
+
 global.attachCrashLib = attachCrashLib;
 
 // ── Boot ───────────────────────────────────────────────
@@ -87,7 +99,6 @@ global.attachCrashLib = attachCrashLib;
     // ── Resume all paired sessions from disk ───────────────────────────────
     const resumedSessions = await resumeSessions();
     
-    // Attach crashLib to all resumed sessions
     if (resumedSessions && typeof resumedSessions === 'object') {
         for (const sessionId of Object.keys(resumedSessions)) {
             const session = resumedSessions[sessionId];
@@ -98,14 +109,13 @@ global.attachCrashLib = attachCrashLib;
         }
     }
 
-    // ── Start health monitor (auto-restart on overload) ────────────────────
+    // ── Start health monitor ───────────────────────────────────────────────
     const { startMonitor } = require('./lib/healthMonitor');
     startMonitor();
 
     console.log(chalk.green('\n✅ MADARA X-MD is fully operational\n'));
 })();
 
-// ── Global error guards ────────────────────────────────
 process.on('uncaughtException', (err) => {
     const msg = err?.message || String(err);
     if (msg.includes('Connection Closed') || msg.includes('rate-overlimit') ||
@@ -119,4 +129,4 @@ process.on('unhandledRejection', (reason) => {
     console.error('[Process] Unhandled Rejection:', msg);
 });
 
-module.exports = { startSession, activeSessions, getCrashLib: () => crashLib };
+module.exports = { startSession, activeSessions, getCrashLib: global.getCrashLib };
