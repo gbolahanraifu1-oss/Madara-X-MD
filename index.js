@@ -3,6 +3,7 @@
 // ║   © 2026 MADARA X-MD INC. — All Rights Reserved           ║
 // ╚══════════════════════════════════════════════════════╝
 
+// ── Global crash guards — keep bot alive on unhandled errors ─────────────
 process.on('uncaughtException', (err) => {
     const noise = ['ECONNRESET','ETIMEDOUT','EPIPE','ENOTFOUND','EFATAL','Connection Closed'];
     if (noise.some(n => err.message?.includes(n))) return;
@@ -26,37 +27,31 @@ const { activeSessions, startSession, clearSession,
         resumeSessions }                                = require('./lib/pairManager');
 const pairApi                                           = require('./pairApi');
 
-// ── Import CrashLib ──────────────────────────────────────────────────────
-const { CrashLib } = require('./lib/crashlib');
-
-// ── Global crashLib storage ──────────────────────────────────────────────
+// ── Global CrashLib instances map ─────────────────────────────────────────
 global.crashLibInstances = new Map();
 
-// ── Helper to attach crashLib to a session ───────────────────────────────
-function attachCrashLib(sock) {
-    if (!sock) return null;
-    const crashLib = new CrashLib(sock);
-    global.crashLibInstances.set(sock.user?.id || 'default', crashLib);
-    console.log(chalk.magenta('✅ CrashLib attached to session'));
-    return crashLib;
-}
-
-// ── Expose crashLib globally for command handlers ────────────────────────
+// ── getCrashLib — retrieve by phone or create from sock ──────────────────
 global.getCrashLib = (sock) => {
     if (sock) {
-        const key = sock.user?.id || 'default';
-        if (global.crashLibInstances.has(key)) {
-            return global.crashLibInstances.get(key);
+        const phone = sock._sessionPhone || sock.user?.id?.split(':')[0];
+        if (phone && global.crashLibInstances?.has(phone)) {
+            return global.crashLibInstances.get(phone);
         }
-        // Create on-the-fly if not exists
-        return attachCrashLib(sock);
+        // Fallback: create from sock directly
+        try {
+            const { CrashLib } = require('./lib/crashlib');
+            const crashLib = new CrashLib(sock);
+            if (phone) global.crashLibInstances?.set(phone, crashLib);
+            return crashLib;
+        } catch (e) {
+            console.error('[CrashLib] Fallback creation error:', e.message);
+            return null;
+        }
     }
     // Return first available if no sock specified
-    const first = global.crashLibInstances.values().next().value;
+    const first = global.crashLibInstances?.values().next().value;
     return first || null;
 };
-
-global.attachCrashLib = attachCrashLib;
 
 // ── Boot ───────────────────────────────────────────────
 (async () => {
@@ -72,11 +67,7 @@ global.attachCrashLib = attachCrashLib;
     pairApi.init(
         async (phone) => {
             try {
-                const session = await startSession(phone, null);
-                if (session?.sock) {
-                    attachCrashLib(session.sock);
-                }
-                return session;
+                return await startSession(phone, null);
             }
             catch (e) {
                 console.error('[WebPair] startSession error:', e.message);
@@ -87,27 +78,10 @@ global.attachCrashLib = attachCrashLib;
     );
 
     // ── Telegram pairing bot ───────────────────────────────────────────────
-    const telegramStartSession = async (phone) => {
-        const session = await startSession(phone);
-        if (session?.sock) {
-            attachCrashLib(session.sock);
-        }
-        return session;
-    };
-    startTelegramBot(telegramStartSession, activeSessions);
+    startTelegramBot(startSession, activeSessions);
 
     // ── Resume all paired sessions from disk ───────────────────────────────
-    const resumedSessions = await resumeSessions();
-    
-    if (resumedSessions && typeof resumedSessions === 'object') {
-        for (const sessionId of Object.keys(resumedSessions)) {
-            const session = resumedSessions[sessionId];
-            if (session?.sock) {
-                attachCrashLib(session.sock);
-                console.log(chalk.green(`✅ CrashLib attached to resumed session: ${sessionId}`));
-            }
-        }
-    }
+    await resumeSessions();
 
     // ── Start health monitor ───────────────────────────────────────────────
     const { startMonitor } = require('./lib/healthMonitor');
@@ -116,6 +90,7 @@ global.attachCrashLib = attachCrashLib;
     console.log(chalk.green('\n✅ MADARA X-MD is fully operational\n'));
 })();
 
+// ── Global error guards ────────────────────────────────
 process.on('uncaughtException', (err) => {
     const msg = err?.message || String(err);
     if (msg.includes('Connection Closed') || msg.includes('rate-overlimit') ||
