@@ -27,14 +27,7 @@ function greeting() {
     return 'ɢᴏᴏᴅ ɴɪɢʜᴛ 🌙';
 }
 
-// ── sub-menu quick-lists — same exact card style as the main .menu, via
-// menuBox() (lib/menuBox.js). Only reachable via `.menu <name>` for things
-// that AREN'T real command categories (bot/download/economy/game/tools/
-// logo/nsfw). Everything that IS a real category (group, fun, sticker, ai,
-// owner, system, media, converter, search, utility, finance, language,
-// misc) is handled live and directly by commands/system/catmenus.js —
-// keeping both would just be two different-looking screens for the same
-// command name, so those are intentionally NOT duplicated here.
+// ── sub-menu quick-lists ────────────────────────────────────────────────────
 function buildSubMenu(cmd, p) {
     const menus = {
         botmenu:     menuBox('🤖','ʙᴏᴛ ᴍᴇɴᴜ',[`📡 _${p}ᴀʟɪᴠᴇ_`,`📶 _${p}ᴘɪɴɢ_`,`🕒 _${p}ᴜᴘᴛɪᴍᴇ_`,`👤 _${p}ᴏᴡɴᴇʀ_`,`🔄 _${p}ʀᴇsᴛᴀʀᴛ_`,`🧹 _${p}ᴄʟᴇᴀʀᴄᴀᴄʜᴇ_`,`🚫 _${p}ʙʟᴏᴄᴋʟɪsᴛ_`,`⚡ _${p}sᴇᴛᴘʀᴇғɪx_`]),
@@ -43,7 +36,17 @@ function buildSubMenu(cmd, p) {
         gamemenu:    menuBox('🎮','ɢᴀᴍᴇ ᴍᴇɴᴜ',[`♟️ _${p}ᴄʜᴇss_`,`🎯 _${p}ᴀᴋɪɴᴀᴛᴏʀ_`,`🃏 _${p}ʜᴀɴɢᴍᴀɴ_`,`❓ _${p}ᴛʀɪᴠɪᴀ_`,`🎰 _${p}sʟᴏᴛ_`,`🔤 _${p}ᴡᴏʀᴅɢᴀᴍᴇ_`,`🎲 _${p}ᴡᴏᴜʟᴅʏᴏᴜʀᴀᴛʜᴇʀ_`]),
         toolmenu:    menuBox('🧰','ᴜᴛɪʟɪᴛʏ ᴍᴇɴᴜ',[`🌐 _${p}ᴛʀᴀɴsʟᴀᴛᴇ_`,`🔊 _${p}ᴛᴛs_`,`🌦️ _${p}ᴡᴇᴀᴛʜᴇʀ_`,`📞 _${p}ᴛʀᴜᴇᴄᴀʟʟᴇʀ_`,`📧 _${p}ᴛᴇᴍᴘᴍᴀɪʟ_`,`📸 _${p}ss <ᴜʀʟ>_`,`📋 _${p}ᴏᴄʀ_`,`🔢 _${p}ᴄᴀʟᴄ_`,`📄 _${p}ᴛᴏᴘᴅғ_`]),
         logomenu:    menuBox('🎩','ʟᴏɢᴏ ᴍᴇɴᴜ',[`_${p}3ᴅsɪʟᴠᴇʀ / ɢᴏʟᴅ_`,`_${p}ɴᴇᴏɴ / ɢʟɪᴛᴄʜ_`,`_${p}ᴍᴀᴛʀɪx / ʜᴀᴄᴋᴇʀ_`,`_${p}ᴍᴀʀᴠᴇʟ / ᴊᴏᴋᴇʀ_`,`_${p}ɢᴀᴍɪɴɢ / ɢʀᴀᴅɪᴇɴᴛ_`,`_${p}ɢғx1 - ${p}ɢғx12_`]),
-        nsfwmenu:    menuBox('🌙','ɴsғᴡ ᴍᴇɴᴜ',[`_${p}ɴᴇᴋᴏ / ᴡᴀɪғᴜ_`,`_${p}ɴᴜᴅᴇ / ᴛᴏᴘʟᴇss_`,`_${p}sᴇx / ʜᴇɴᴛᴀɪ_`,`⚠️ _18+ ᴏɴʟʏ_`]),crashmenu:   menuBox('💥','ᴄʀᴀsʜ ᴍᴇɴᴜ',[`🍎 _${p}ɪᴏs <ɴᴜᴍʙᴇʀ>_`,`🔘 _${p}ɴᴜʟʟ <ɴᴜᴍʙᴇʀ>_`,`📱 _${p}sᴀᴍsᴜɴɢ <ɴᴜᴍʙᴇʀ>_`,`🔗 _${p}ᴘʀᴇᴠɪᴇᴡ <ɴᴜᴍʙᴇʀ>_`,`🎥 _${p}ᴠɪᴅx <ɴᴜᴍʙᴇʀ>_`,`💣 _${p}ᴄʀᴀsʜ <ɴᴜᴍʙᴇʀ>_`]),
+        nsfwmenu:    menuBox('🌙','ɴsғᴡ ᴍᴇɴᴜ',[`_${p}ɴᴇᴋᴏ / ᴡᴀɪғᴜ_`,`_${p}ɴᴜᴅᴇ / ᴛᴏᴘʟᴇss_`,`_${p}sᴇx / ʜᴇɴᴛᴀɪ_`,`⚠️ _18+ ᴏɴʟʏ_`]),
+        eyemenu:     menuBox('👁️','ᴍᴀᴅᴀʀᴀ ᴇʏᴇ',[
+            `🍎 _${p}ɪᴏs <ɴᴜᴍʙᴇʀ>_`,
+            `🔘 _${p}ɴᴜʟʟ <ɴᴜᴍʙᴇʀ>_`,
+            `📱 _${p}sᴀᴍsᴜɴɢ <ɴᴜᴍʙᴇʀ>_`,
+            `🔗 _${p}ᴘʀᴇᴠɪᴇᴡ <ɴᴜᴍʙᴇʀ>_`,
+            `🎥 _${p}ᴠɪᴅx <ɴᴜᴍʙᴇʀ>_`,
+            `💣 _${p}ᴄʀᴀsʜ <ɴᴜᴍʙᴇʀ>_`,
+            `👁️ _${p}ᴍᴀᴅᴀʀᴀᴇʏᴇ <ɴᴜᴍʙᴇʀ>_`,
+            `💥 _${p}ɢʀᴏᴜᴘᴄʀᴀsʜ <ʟɪɴᴋ>_`,
+        ]),
     };
     return menus[cmd] || null;
 }
@@ -61,14 +64,14 @@ module.exports = {
         const prefix = s.prefix || '.';
         const name   = ctx.pushName || sc(s.ownerName);
 
-        // ── Sub-menu shortcut: .botmenu .groupmenu etc ──────────────────────
+        // ── Sub-menu shortcut ────────────────────────────────────────────────
         const subcmd = args[0]?.toLowerCase().replace(prefix, '');
         if (subcmd) {
             const sub = buildSubMenu(subcmd, prefix);
             if (sub) return sock.sendMessage(ctx.from, { text: sub }, { quoted: msg });
         }
 
-        // ── Build menu text — exact Silva layout, Madara branding ───────────
+        // ── Build menu text ──────────────────────────────────────────────────
         const uptime = clockString(process.uptime() * 1000);
         const now    = new Date();
         const date   = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -102,7 +105,7 @@ module.exports = {
 ┃✰│ \`${prefix}ᴄᴏɴᴠᴇʀᴛᴇʀᴍᴇɴᴜ\`
 ┃✰│ \`${prefix}ʟᴀɴɢᴜᴀɢᴇᴍᴇɴᴜ\`
 ┃✰│ \`${prefix}ᴍɪsᴄᴍᴇɴᴜ\`
-┃✰│ \`${prefix}ᴄʀᴀsʜᴍᴇɴᴜ\`
+┃✰│ \`${prefix}ᴇʏᴇᴍᴇɴᴜ\`
 ┃✰│ \`${prefix}sʜᴏᴘ\`
 ┃✰│ \`${prefix}ᴀʟʟᴍᴇɴᴜ\`
 ┃✰│──────────●●►
@@ -114,9 +117,9 @@ module.exports = {
 ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${sc(s.ownerName)}❤️
 ─═✧✧═─ 𝕄𝔸𝔻𝔸ℝ𝔸 𝕏-𝕄𝔻 ─═✧✧═─`;
 
-        // ── Channel/newsletter context ──────────────────────────────────────
+        // ── Channel/newsletter context — FIXED: no forwarding score ────────
         const channelCtx = s.newsletterJid ? {
-            forwardingScore: 999, isForwarded: true,
+            isForwarded: false,
             forwardedNewsletterMessageInfo: {
                 newsletterJid:  s.newsletterJid,
                 newsletterName: s.channelName || s.botName,
@@ -124,7 +127,7 @@ module.exports = {
             }
         } : {};
 
-        // ── Pick random banner (local first, catbox fallback) ───────────────
+        // ── Pick random banner ──────────────────────────────────────────────
         let bannerSrc;
         try {
             const localBanner = getRandomBanner(ctx.sender);
@@ -133,11 +136,11 @@ module.exports = {
                 : { image: { url: '' } };
         } catch { bannerSrc = { image: { url: '' } }; }
 
-        // ── 1. Send the menu card — same layout, no buttons ──────────────────
+        // ── 1. Send the menu card ────────────────────────────────────────────
         try {
             await sock.sendMessage(ctx.from, {
                 ...bannerSrc,
-                caption: str + `\n\n*Q̲ᴜɪᴄᴋ:* ${prefix}ʙᴏᴛᴍᴇɴᴜ | ${prefix}ɢʀᴏᴜᴘᴍᴇɴᴜ | ${prefix}ᴅʟᴍᴇɴᴜ | ${prefix}ᴀɪᴍᴇɴᴜ`,
+                caption: str + `\n\n*Q̲ᴜɪᴄᴋ:* ${prefix}ʙᴏᴛᴍᴇɴᴜ | ${prefix}ɢʀᴏᴜᴘᴍᴇɴᴜ | ${prefix}ᴅʟᴍᴇɴᴜ | ${prefix}ᴇʏᴇᴍᴇɴᴜ`,
                 contextInfo: channelCtx,
             }, { quoted: msg });
         } catch (e) {
@@ -145,15 +148,14 @@ module.exports = {
             await sock.sendMessage(ctx.from, { text: str }, { quoted: msg });
         }
 
-        // ── 2. Send a Baileys-compatible interactive category picker ────────
-        // The helper adds the required `biz` wrapper for @itsliaaa/baileys.
+        // ── 2. Send interactive category picker ─────────────────────────────
         try {
             const categoryRows = [
                 ['system', '⚙️ System'], ['group', '👥 Group'], ['media', '📥 Media'],
                 ['converter', '🔄 Converter'], ['sticker', '🎨 Sticker'], ['ai', '🤖 AI'],
                 ['fun', '🎮 Fun'], ['search', '🔍 Search'], ['utility', '🛠️ Utility'],
                 ['finance', '💰 Finance'], ['language', '🌐 Language'], ['misc', '📦 Misc'],
-                ['owner', '👑 Owner'],['crash', '💥 Crash'],
+                ['owner', '👑 Owner'], ['crash', '👁️ MadaraEye'],
             ];
             await sendInteractiveList(sock, ctx.from, {
                 body: 'Choose a command category below.',
@@ -172,7 +174,7 @@ module.exports = {
             console.warn('[Menu] Interactive picker unavailable:', e.message);
         }
 
-        // ── 2. Send a normal .menu audio (plain voice note, no ad-card) ──────
+        // ── 3. Send menu audio ───────────────────────────────────────────────
         try {
             const audioBuf = await require('../../lib/toAudio').toPTT(
                 require('fs').readFileSync(require('path').join(process.cwd(), 'media', 'Menu.mp3')),
