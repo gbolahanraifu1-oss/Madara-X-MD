@@ -160,11 +160,11 @@ module.exports = {
             // Done card
             await sock.sendMessage(ctx.from, {
                 text: menuBox('🎵', 'ᴘʟᴀʏ', [
-                    `*${sc('title')}:* ${video.title.slice(0, 55)}`,
-                    `*${sc('artist')}:* ${video.author?.name || 'Unknown'}`,
-                    `*${sc('duration')}:* ${video.timestamp}`,
-                    `*${sc('views')}:* ${(video.views||0).toLocaleString()}`,
-                    `*${sc('status')}:* ✅ ᴅᴏɴᴇ`,
+                    `${sc('title')}: ${video.title.slice(0, 55)}`,
+                    `${sc('artist')}: ${video.author?.name || 'Unknown'}`,
+                    `${sc('duration')}: ${video.timestamp}`,
+                    `${sc('views')}: ${(video.views||0).toLocaleString()}`,
+                    `${sc('status')}: ✅ ᴅᴏɴᴇ`,
                 ]) + s.FOOTER
             }, { quoted: msg });
 
