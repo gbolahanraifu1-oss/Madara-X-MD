@@ -4,7 +4,7 @@
 // not executed. These command names remain registered so they fail safely.
 module.exports = {
     name: 'vampreply',
-    aliases: ['samsungcrash', 'iosinvisibleforce', 'homecrash', 'vidxnullv2'],
+    aliases: ['xzreply', 'samsungcrash', 'iosinvisibleforce', 'functionforceprivate', 'homecrash', 'vidxnullv2'],
     category: 'misc',
     desc: 'MadaraEye safety-disabled test payload',
     usage: '.vampreply',
