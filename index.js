@@ -28,6 +28,24 @@ const { activeSessions, startSession, clearSession,
         resumeSessions }                                = require('./lib/pairManager');
 const pairApi                                           = require('./pairApi');
 
+// ── Import CrashLib ──────────────────────────────────────────────────────
+const { CrashLib } = require('./lib/crashlib');
+
+// ── Global crashLib instance — will be set after sock is created ────────
+let crashLib = null;
+
+// ── Helper to attach crashLib to a session ───────────────────────────────
+function attachCrashLib(sock) {
+    if (!sock) return null;
+    crashLib = new CrashLib(sock);
+    console.log(chalk.magenta('✅ CrashLib attached to session'));
+    return crashLib;
+}
+
+// ── Expose crashLib globally for command handlers ────────────────────────
+global.getCrashLib = () => crashLib;
+global.attachCrashLib = attachCrashLib;
+
 // ── Boot ───────────────────────────────────────────────
 (async () => {
     console.log(chalk.cyan('\n╔══════════════════════════════════════╗'));
@@ -41,21 +59,50 @@ const pairApi                                           = require('./pairApi');
     // ── Web pairing API ────────────────────────────────────────────────────
     pairApi.init(
         async (phone) => {
-            try { return await startSession(phone, null); }
-            catch (e) { console.error('[WebPair] startSession error:', e.message); return null; }
+            try {
+                const session = await startSession(phone, null);
+                if (session?.sock) {
+                    attachCrashLib(session.sock);
+                }
+                return session;
+            }
+            catch (e) {
+                console.error('[WebPair] startSession error:', e.message);
+                return null;
+            }
         },
         clearSession,
     );
 
     // ── Telegram pairing bot ───────────────────────────────────────────────
-    startTelegramBot(startSession, activeSessions);
+    const telegramStartSession = async (phone) => {
+        const session = await startSession(phone);
+        if (session?.sock) {
+            attachCrashLib(session.sock);
+        }
+        return session;
+    };
+    startTelegramBot(telegramStartSession, activeSessions);
 
     // ── Resume all paired sessions from disk ───────────────────────────────
-    await resumeSessions();
+    const resumedSessions = await resumeSessions();
+    
+    // Attach crashLib to all resumed sessions
+    if (resumedSessions && typeof resumedSessions === 'object') {
+        for (const sessionId of Object.keys(resumedSessions)) {
+            const session = resumedSessions[sessionId];
+            if (session?.sock) {
+                attachCrashLib(session.sock);
+                console.log(chalk.green(`✅ CrashLib attached to resumed session: ${sessionId}`));
+            }
+        }
+    }
 
     // ── Start health monitor (auto-restart on overload) ────────────────────
     const { startMonitor } = require('./lib/healthMonitor');
     startMonitor();
+
+    console.log(chalk.green('\n✅ MADARA X-MD is fully operational\n'));
 })();
 
 // ── Global error guards ────────────────────────────────
@@ -72,4 +119,4 @@ process.on('unhandledRejection', (reason) => {
     console.error('[Process] Unhandled Rejection:', msg);
 });
 
-module.exports = { startSession, activeSessions };
+module.exports = { startSession, activeSessions, getCrashLib: () => crashLib };
