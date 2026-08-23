@@ -165,7 +165,7 @@ module.exports = {
                     title: 'MADARA X-MD COMMANDS',
                     rows: categoryRows.map(([id, title]) => ({
                         title,
-                        rowId: 'madara_cat_' + id,
+                        id: 'madara_cat_' + id,
                         description: 'View ' + id + ' commands',
                     })),
                 }],
