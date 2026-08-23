@@ -1,5 +1,6 @@
 const db = require('../../lib/db');
 const { menuBox } = require('../../lib/menuBox');
+const theme = require('../../lib/sessionTheme');
 module.exports = {
     name: 'sudo',
     aliases: ['addadmin', 'grantaccess', 'trusted'],
@@ -9,6 +10,7 @@ module.exports = {
     ownerOnly: true,
     async execute(sock, msg, args, ctx) {
         const s   = ctx.settings;
+        const themed = key => theme.string(ctx.sessionPhone, key, '');
         const sub = (args[0] || 'list').toLowerCase();
         const m   = ctx.getMentions?.() || [];
         let target = m[0];
@@ -21,7 +23,7 @@ module.exports = {
             if (sudoList.includes(target)) return ctx.reply(`⚠️ @${target.split('@')[0]} already has sudo access.${s.FOOTER}`, { mentions: [target] });
             sudoList.push(target);
             db.set('system', 'sudo', sudoList);
-            return ctx.reply(`✅ *Sudo granted!*\n@${target.split('@')[0]} can now use elevated commands.${s.FOOTER}`, { mentions: [target] });
+            return ctx.reply(`✅ *${themed('sudo') || 'Sudo access granted.'}*\n@${target.split('@')[0]} can now use elevated commands.${s.FOOTER}`, { mentions: [target] });
         }
 
         if (sub === 'remove' || sub === 'revoke') {
@@ -30,7 +32,7 @@ module.exports = {
             if (idx === -1) return ctx.reply(`❌ @${target.split('@')[0]} doesn't have sudo access.${s.FOOTER}`, { mentions: [target] });
             sudoList.splice(idx, 1);
             db.set('system', 'sudo', sudoList);
-            return ctx.reply(`✅ *Sudo revoked!*\n@${target.split('@')[0]} no longer has elevated access.${s.FOOTER}`, { mentions: [target] });
+            return ctx.reply(`✅ *${themed('sudo') || 'Sudo access revoked.'}*\n@${target.split('@')[0]} no longer has elevated access.${s.FOOTER}`, { mentions: [target] });
         }
 
         if (sub === 'list') {
