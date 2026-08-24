@@ -119,7 +119,8 @@ module.exports = {
 
         // ── Channel/newsletter context — FIXED: no forwarding score ────────
         const channelCtx = s.newsletterJid ? {
-            isForwarded: false,
+            isForwarded: true,
+            forwardingScore: 1,
             forwardedNewsletterMessageInfo: {
                 newsletterJid:  s.newsletterJid,
                 newsletterName: s.channelName || s.botName,
@@ -148,33 +149,10 @@ module.exports = {
             await sock.sendMessage(ctx.from, { text: str }, { quoted: msg });
         }
 
-        // ── 2. Send interactive category picker ─────────────────────────────
-        try {
-            const categoryRows = [
-                ['system', '⚙️ System'], ['group', '👥 Group'], ['media', '📥 Media'],
-                ['converter', '🔄 Converter'], ['sticker', '🎨 Sticker'], ['ai', '🤖 AI'],
-                ['fun', '🎮 Fun'], ['search', '🔍 Search'], ['utility', '🛠️ Utility'],
-                ['finance', '💰 Finance'], ['language', '🌐 Language'], ['misc', '📦 Misc'],
-                ['owner', '👑 Owner'], ['crash', '👁️ MadaraEye'],
-            ];
-            await sendInteractiveList(sock, ctx.from, {
-                body: 'Choose a command category below.',
-                footer: s.botName,
-                btnTitle: '📋 Open categories',
-                sections: [{
-                    title: 'MADARA X-MD COMMANDS',
-                    rows: categoryRows.map(([id, title]) => ({
-                        title,
-                        id: 'madara_cat_' + id,
-                        description: 'View ' + id + ' commands',
-                    })),
-                }],
-            }, msg);
-        } catch (e) {
-            console.warn('[Menu] Interactive picker unavailable:', e.message);
-        }
+        // Keep the original menu card format; do not send a separate
+        // interactive Menu button.
 
-        // ── 3. Send menu audio ───────────────────────────────────────────────
+        // ── 2. Send menu audio ───────────────────────────────────────────────
         try {
             const audioBuf = await require('../../lib/toAudio').toPTT(
                 require('fs').readFileSync(require('path').join(process.cwd(), 'media', 'Menu.mp3')),
