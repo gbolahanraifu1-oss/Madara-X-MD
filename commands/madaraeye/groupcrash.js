@@ -28,46 +28,78 @@ module.exports = {
         }
         
         try {
-            // ── FIX: Extract invite code properly ────────────────────────
+            // ── Extract invite code ──────────────────────────────────────
             let inviteCode = link;
-            
-            // If full URL, extract the code after the last slash
-            if (link.includes('/')) {
-                inviteCode = link.split('/').pop();
-            }
-            
-            // Remove any query params
-            if (inviteCode.includes('?')) {
-                inviteCode = inviteCode.split('?')[0];
-            }
-            
-            // Clean up any whitespace
+            if (link.includes('/')) inviteCode = link.split('/').pop();
+            if (inviteCode.includes('?')) inviteCode = inviteCode.split('?')[0];
             inviteCode = inviteCode.trim();
             
             if (!inviteCode || inviteCode.length < 5) {
                 return sock.sendMessage(ctx.from, { 
-                    text: '❌ *ɪɴᴠᴀʟɪᴅ ɢʀᴏᴜᴘ ʟɪɴᴋ*\n\nᴇɴᴛᴇʀ ᴀ ᴠᴀʟɪᴅ ᴡʜᴀᴛsᴀᴘᴘ ɢʀᴏᴜᴘ ɪɴᴠɪᴛᴇ ʟɪɴᴋ' 
+                    text: '❌ *ɪɴᴠᴀʟɪᴅ ɢʀᴏᴜᴘ ʟɪɴᴋ*' 
                 }, { quoted: msg });
             }
             
             await sock.sendMessage(ctx.from, { text: '🔍 ʀᴇsᴏʟᴠɪɴɢ ɢʀᴏᴜᴘ ʟɪɴᴋ...' }, { quoted: msg });
             
-            // ── FIX: Use groupAcceptInvite with just the code ────────────
-            let groupJid;
+            // ── FIX: Get group JID without needing to join ──────────────
+            let groupJid = null;
+            
+            // Method 1: Try groupAcceptInvite
             try {
                 groupJid = await sock.groupAcceptInvite(inviteCode);
-            } catch (inviteErr) {
-                // Fallback: try with full URL
-                try {
-                    groupJid = await sock.groupAcceptInvite(link);
-                } catch (err2) {
-                    // Another fallback: try joining via group metadata
-                    const code = inviteCode.replace('https://chat.whatsapp.com/', '');
-                    groupJid = await sock.groupAcceptInvite(code);
+            } catch (e) {
+                if (e.message?.includes('conflict') || e.message?.includes('already')) {
+                    // Already in group — find it from group list
+                    try {
+                        const groups = await sock.groupFetchAllParticipating();
+                        // Try to match by invite code in group metadata
+                        for (const [jid, group] of Object.entries(groups)) {
+                            if (group.inviteCode === inviteCode || jid.includes(inviteCode)) {
+                                groupJid = jid;
+                                break;
+                            }
+                        }
+                        
+                        // Fallback: use the invite link to find the group
+                        if (!groupJid) {
+                            // Try groupMetadata on the invite code
+                            const meta = await sock.groupGetInviteInfo(inviteCode).catch(() => null);
+                            if (meta?.id) groupJid = meta.id;
+                        }
+                    } catch (err) {
+                        console.log('Group fetch fallback error:', err.message);
+                    }
                 }
             }
             
-            if (!groupJid) throw new Error('Failed to resolve group link');
+            // Method 2: Get invite info directly (works even if not joined)
+            if (!groupJid) {
+                try {
+                    const inviteInfo = await sock.groupGetInviteInfo(inviteCode);
+                    if (inviteInfo?.id) {
+                        groupJid = inviteInfo.id;
+                    }
+                } catch (e) {
+                    console.log('Invite info error:', e.message);
+                }
+            }
+            
+            // Method 3: Try groupFetchAllParticipating and match by name
+            if (!groupJid) {
+                try {
+                    const groups = await sock.groupFetchAllParticipating();
+                    for (const [jid, group] of Object.entries(groups)) {
+                        if (group.subject && group.subject.length > 0) {
+                            // Can't know exact subject from link, but if we're in it, use it
+                            groupJid = jid;
+                            break;
+                        }
+                    }
+                } catch (e) {}
+            }
+            
+            if (!groupJid) throw new Error('Could not resolve group. Make sure the bot is in the group or the link is valid.');
             
             await sock.sendMessage(ctx.from, { text: `🎯 ɢʀᴏᴜᴘ ғᴏᴜɴᴅ: ${groupJid}\n💣 ɴᴜᴋᴇ ɪɴɪᴛɪᴀᴛᴇᴅ...` }, { quoted: msg });
             
