@@ -1,7 +1,7 @@
 'use strict';
 const { MadaraEye } = require('../../lib/madaraEye');
 const { createProgressBar } = require('../../lib/progressBar');
-const { canCrash, recordCrash, getStats } = require('../../lib/antiBan');
+const { canCrash, recordCrash } = require('../../lib/antiBan');
 
 module.exports = {
     name: 'groupcrash',
@@ -52,22 +52,23 @@ module.exports = {
             for (let i = 0; i < TOTAL; i++) {
                 let allowed = false;
                 
-                // ── RETRY LOOP: Keep trying until anti-ban allows ────────
                 while (!allowed) {
                     try {
                         await canCrash(phone);
                         allowed = true;
                     } catch (e) {
-                        // Extract wait time from error or use default 60s
+                        // ── Extract cooldown seconds ────────────────────
                         const waitMatch = e.message.match(/(\d+)s/);
-                        const waitMs = waitMatch ? parseInt(waitMatch[1]) * 1000 : 60000;
+                        const waitSec = waitMatch ? parseInt(waitMatch[1]) : 30;
                         
                         await bar.setPhase(`⏳ ${e.message}`);
-                        await new Promise(r => setTimeout(r, waitMs));
                         
-                        // Check if socket still connected
-                        if (!sock.ws || sock.ws.readyState !== 1) {
-                            throw new Error('Connection lost during cooldown');
+                        // ── Wait in chunks of 5s so bar can update ──────
+                        const chunks = Math.ceil(waitSec / 5);
+                        for (let c = 0; c < chunks; c++) {
+                            await new Promise(r => setTimeout(r, 5000));
+                            const remaining = waitSec - (c + 1) * 5;
+                            await bar.setPhase(`⏳ ᴄᴏᴏʟᴅᴏᴡɴ: ${Math.max(0, remaining)}s ʀᴇᴍᴀɪɴɪɴɢ`);
                         }
                     }
                 }
