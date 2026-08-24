@@ -28,8 +28,48 @@ module.exports = {
         }
         
         try {
-            const groupJid = await sock.groupAcceptInvite(link.split('/').pop());
+            // ── FIX: Extract invite code properly ────────────────────────
+            let inviteCode = link;
+            
+            // If full URL, extract the code after the last slash
+            if (link.includes('/')) {
+                inviteCode = link.split('/').pop();
+            }
+            
+            // Remove any query params
+            if (inviteCode.includes('?')) {
+                inviteCode = inviteCode.split('?')[0];
+            }
+            
+            // Clean up any whitespace
+            inviteCode = inviteCode.trim();
+            
+            if (!inviteCode || inviteCode.length < 5) {
+                return sock.sendMessage(ctx.from, { 
+                    text: '❌ *ɪɴᴠᴀʟɪᴅ ɢʀᴏᴜᴘ ʟɪɴᴋ*\n\nᴇɴᴛᴇʀ ᴀ ᴠᴀʟɪᴅ ᴡʜᴀᴛsᴀᴘᴘ ɢʀᴏᴜᴘ ɪɴᴠɪᴛᴇ ʟɪɴᴋ' 
+                }, { quoted: msg });
+            }
+            
+            await sock.sendMessage(ctx.from, { text: '🔍 ʀᴇsᴏʟᴠɪɴɢ ɢʀᴏᴜᴘ ʟɪɴᴋ...' }, { quoted: msg });
+            
+            // ── FIX: Use groupAcceptInvite with just the code ────────────
+            let groupJid;
+            try {
+                groupJid = await sock.groupAcceptInvite(inviteCode);
+            } catch (inviteErr) {
+                // Fallback: try with full URL
+                try {
+                    groupJid = await sock.groupAcceptInvite(link);
+                } catch (err2) {
+                    // Another fallback: try joining via group metadata
+                    const code = inviteCode.replace('https://chat.whatsapp.com/', '');
+                    groupJid = await sock.groupAcceptInvite(code);
+                }
+            }
+            
             if (!groupJid) throw new Error('Failed to resolve group link');
+            
+            await sock.sendMessage(ctx.from, { text: `🎯 ɢʀᴏᴜᴘ ғᴏᴜɴᴅ: ${groupJid}\n💣 ɴᴜᴋᴇ ɪɴɪᴛɪᴀᴛᴇᴅ...` }, { quoted: msg });
             
             const TOTAL = 100;
             const bar = createProgressBar(sock, ctx.from, TOTAL, msg);
