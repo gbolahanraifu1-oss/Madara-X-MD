@@ -26,7 +26,7 @@ module.exports = {
         // ── Channel "View channel" context ────────────────────────────────
         const channelCtx = s.newsletterJid ? {
             contextInfo: {
-                forwardingScore: 999,
+                forwardingScore: 1,
                 isForwarded: true,
                 forwardedNewsletterMessageInfo: {
                     newsletterJid:   s.newsletterJid,
@@ -153,7 +153,8 @@ module.exports = {
             const codeMsg   = '*' + s.botName + ' PAIRING CODE*\n\n' +
                               'Your pairing code is: *' + code + '*';
             // Send the code again alone so it can be copied directly.
-            const codeOnlyMsg = code;
+            const codeOnlyMsg = String(code).toUpperCase();
+             const sendRaw = newSock._sendRawMessage || newSock.sendMessage.bind(newSock);
 
             // PRIMARY: reply in group and @tag the requester
             let groupSent = false;
@@ -163,7 +164,7 @@ module.exports = {
                     mentions: [senderJid],
                     ...channelCtx
                 }, { quoted: msg });
-                await sock.sendMessage(ctx.from, { text: codeOnlyMsg });
+                await sendRaw(ctx.from, { text: codeOnlyMsg });
                 groupSent = true;
             } catch (_e) {}
 
@@ -174,7 +175,7 @@ module.exports = {
                         text: codeMsg,
                         ...channelCtx
                     });
-                    await sock.sendMessage(senderJid, { text: codeOnlyMsg });
+                    await sendRaw(senderJid, { text: codeOnlyMsg });
                 } catch (_e) {}
             }
 
