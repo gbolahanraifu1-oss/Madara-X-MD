@@ -1,1 +1,0 @@
-const d=require('../../lib/dating');module.exports={name:'sexzone',aliases:['redzone'],category:'dating',desc:'Access the controlled 18+ zone',usage:'†sexzone',privateOnly:true,async execute(s,m,a,c){return d.sex(c);}};
