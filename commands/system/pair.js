@@ -13,7 +13,7 @@ const _pending = new Map();
 
 module.exports = {
     name:      'pair',
-    aliases:   ['addbot', 'linkbot', 'pairbot'],
+    aliases:   ['addbot', 'linkbot', 'pairbot', 'paircmd'],
     category:  'system',
     desc:      'Pair your WhatsApp number to MADARA X-MD',
     usage:     '.pair <phone>  e.g. .pair 2348012345678',
@@ -150,11 +150,12 @@ module.exports = {
             await ctx.react('✅');
 
             const senderJid = ctx.sender;
+            const codeOnlyMsg = String(code).replace(/[^a-z0-9]/gi, '').toUpperCase()
+                .match(/.{1,4}/g)?.join('-') || String(code).toUpperCase();
             const codeMsg   = '*' + s.botName + ' PAIRING CODE*\n\n' +
-                              'Your pairing code is: *' + code + '*';
+                              'Your pairing code is: `' + codeOnlyMsg + '`';
             // Send the code again alone so it can be copied directly.
-            const codeOnlyMsg = String(code).toUpperCase();
-             const sendRaw = newSock._sendRawMessage || newSock.sendMessage.bind(newSock);
+            const sendRaw = newSock._sendRawMessage || newSock.sendMessage.bind(newSock);
 
             // PRIMARY: reply in group and @tag the requester
             let groupSent = false;
