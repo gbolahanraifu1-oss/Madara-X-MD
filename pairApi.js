@@ -174,7 +174,7 @@ async function handleRequest(req, res) {
             if (!sock) throw new Error('Could not start session');
 
             const code      = await getPairingCode(sock, phone);
-            const formatted = code.match(/.{1,4}/g)?.join('-') || code;
+            const formatted = String(code).toUpperCase();
             const ms        = Date.now() - started;
             console.log(`[WebPair] ✅ Code for +${phone}: ${formatted} (${ms} ms)`);
 
