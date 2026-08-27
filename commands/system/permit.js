@@ -1,3 +1,6 @@
+'use strict';
+const { menuBox } = require('../../lib/menuBox');
+
 module.exports = {
     name: 'permit',
     aliases: ['grantperm'],
@@ -16,26 +19,28 @@ module.exports = {
         }
         
         if (!target) {
-            return ctx.reply(`
-╔═══════════════════════════════╗
-║  ✅ PERMIT SYSTEM             ║
-╚═══════════════════════════════╝
-
-${s.PREFIX}permit @user    - Unblock user
-${s.PREFIX}permit [number] - Unblock by number
-
-Grants permission for blocked users
-
-${s.FOOTER}`);
+            return ctx.reply(menuBox('✅', 'ᴘᴇʀᴍɪᴛ', [
+                `${s.prefix}permit @user — ᴜɴʙʟᴏᴄᴋ ᴜsᴇʀ`,
+                `${s.prefix}permit number — ᴜɴʙʟᴏᴄᴋ ʙʏ ɴᴜᴍʙᴇʀ`,
+                'ɢʀᴀɴᴛs ᴘʀɪᴠᴀᴛᴇ ᴍᴇssᴀɢᴇ ᴘᴇʀᴍɪssɪᴏɴ',
+            ]) + s.FOOTER);
         }
 
         try {
             await sock.updateBlockStatus(target, 'unblock');
-            ctx.reply(`✓ *Permission granted*\n\n✅ @${target.split('@')[0]} can now DM${s.FOOTER}`, { 
-                mentions: [target] 
+            const db = require('../../lib/db');
+            const allowed = db.get('settings', 'pmAllowlist', []);
+            const number = target.split('@')[0].split(':')[0];
+            if (!allowed.includes(number)) db.set('settings', 'pmAllowlist', [...allowed, number]);
+            return ctx.reply({
+                text: menuBox('✅', 'ᴘᴇʀᴍɪᴛ', [
+                    `@${target.split('@')[0]} ᴄᴀɴ ɴᴏᴡ ᴅᴍ`,
+                    'ᴛʜᴇ ᴜsᴇʀ ᴡᴀs ᴀᴅᴅᴇᴅ ᴛᴏ ᴛʜᴇ ᴀʟʟᴏᴡʟɪsᴛ',
+                ]) + s.FOOTER,
+                mentions: [target],
             });
         } catch (e) {
-            ctx.reply(`❌ Failed: ${e.message}${s.FOOTER}`);
+            return ctx.reply(menuBox('❌', 'ᴘᴇʀᴍɪᴛ', [`ғᴀɪʟᴇᴅ: ${e.message}`]) + s.FOOTER);
         }
     }
 };
