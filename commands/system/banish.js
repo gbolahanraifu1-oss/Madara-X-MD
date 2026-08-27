@@ -1,3 +1,6 @@
+'use strict';
+const { menuBox } = require('../../lib/menuBox');
+
 module.exports = {
     name: 'banish',
     aliases: ['permban'],
@@ -9,7 +12,7 @@ module.exports = {
     
     async execute(sock, msg, args, ctx) {
         const s = ctx.settings;
-        const isGroupAdmin = ctx.isGroupAdmin?.();
+        const isGroupAdmin = ctx.isSenderAdmin;
         const mentions = ctx.getMentions?.() || [];
         let target = mentions[0];
         
@@ -26,20 +29,12 @@ module.exports = {
         }
         
         if (!target) {
-            return ctx.reply(`
-╔═══════════════════════════════╗
-║  ⚔️ BANISH SYSTEM             ║
-╚═══════════════════════════════╝
-
-${s.PREFIX}banish @user     - Ban user
-${s.PREFIX}banish [number]  - Ban by number
-
-Permanently bans from group.
-Even if re-added, bot auto-kicks.
-
-"Banish - no coming back"
-
-${s.FOOTER}`);
+            return ctx.reply(menuBox('⚔️', 'ʙᴀɴɪsʜ', [
+                `${s.prefix}banish @user — ʙᴀɴɪsʜ ᴜsᴇʀ`,
+                `${s.prefix}banish number — ʙᴀɴɪsʜ ʙʏ ɴᴜᴍʙᴇʀ`,
+                'ᴘᴇʀᴍᴀɴᴇɴᴛʟʏ ʀᴇᴍᴏᴠᴇs ᴛʜᴇ ᴜsᴇʀ ғʀᴏᴍ ᴛʜᴇ ɢʀᴏᴜᴘ',
+                'ʙᴀɴɪsʜ — ɴᴏ ᴄᴏᴍɪɴɢ ʙᴀᴄᴋ',
+            ]) + s.FOOTER);
         }
 
         try {
@@ -49,11 +44,15 @@ ${s.FOOTER}`);
                 'remove'
             );
             
-            ctx.reply(`⚔️ *BANISHED*\n\n🚫 @${target.split('@')[0]} permanently banned.\n\n"No coming back"${s.FOOTER}`, { 
-                mentions: [target] 
+            return ctx.reply({
+                text: menuBox('⚔️', 'ʙᴀɴɪsʜ', [
+                    `🚫 @${target.split('@')[0]} ᴘᴇʀᴍᴀɴᴇɴᴛʟʏ ʙᴀɴɪsʜᴇᴅ`,
+                    'ɴᴏ ᴄᴏᴍɪɴɢ ʙᴀᴄᴋ',
+                ]) + s.FOOTER,
+                mentions: [target],
             });
         } catch (e) {
-            ctx.reply(`❌ Failed: ${e.message}${s.FOOTER}`);
+            return ctx.reply(menuBox('❌', 'ʙᴀɴɪsʜ', [`ғᴀɪʟᴇᴅ: ${e.message}`]) + s.FOOTER);
         }
     }
 };
