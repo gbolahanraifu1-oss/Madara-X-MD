@@ -4,7 +4,7 @@ const db = require('../../lib/db');
 const { sendInteractiveList } = require('../../lib/baileysHelper');
 
 const STATE_KEY = 'groupCommandResponse';
-const CONTROL_ALIASES = new Set(['response', 'respond', 'botresponse', 'groupresponse', 'groupoff']);
+const CONTROL_ALIASES = new Set(['response', 'respond', 'botresponse', 'groupresponse', 'groupoff', 'group']);
 
 function normalise(state) {
     const value = state && typeof state === 'object' ? state : {};
