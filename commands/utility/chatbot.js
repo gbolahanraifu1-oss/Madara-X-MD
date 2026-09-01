@@ -159,7 +159,7 @@ async function handleInteractive(sock, msg, ctx, selectedId) {
 
 module.exports = {
     name: 'chatbot',
-    aliases: ['cb', 'togglechatbot', 'chatbotmode'],
+    aliases: ['chat', 'cb', 'togglechatbot', 'chatbotmode'],
     category: 'utility',
     desc: 'ᴜsᴇ ᴀɪ ᴡʜᴇɴ ᴛᴀɢɢᴇᴅ ᴏʀ ʀᴇᴘʟɪᴇᴅ ᴛᴏ',
     usage: '†chatbot on|off|mode|provider|groups|response|status',
