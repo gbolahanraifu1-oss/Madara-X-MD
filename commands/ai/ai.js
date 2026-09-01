@@ -11,7 +11,7 @@ const PROVIDERS = {
     claude: {
         env: 'ANTHROPIC_API_KEY',
         url: 'https://api.anthropic.com/v1/messages',
-        model: process.env.ANTHROPIC_MODEL || 'claude-3-5-haiku-latest',
+        model: process.env.ANTHROPIC_MODEL || 'claude-3-5-haiku-20241022',
     },
     grok: {
         env: 'XAI_API_KEY',
@@ -100,6 +100,14 @@ async function askProvider(provider, prompt, tone = 'warm') {
     return String(answer).trim();
 }
 
+function providerError(error) {
+    return error?.response?.data?.error?.message
+        || error?.response?.data?.error
+        || error?.response?.data?.message
+        || (error?.response?.status ? `HTTP ${error.response.status}` : error?.message)
+        || 'Unknown provider error';
+}
+
 async function askProviderWithFallback(provider, prompt, tone = 'warm') {
     const preferred = PROVIDERS[provider] ? provider : 'grok';
     const chain = preferred === 'openai'
@@ -112,8 +120,9 @@ async function askProviderWithFallback(provider, prompt, tone = 'warm') {
         try {
             return await askProvider(candidate, prompt, tone);
         } catch (error) {
-            failures.push(`${candidate}: ${error.message}`);
-            console.error(`[ai:${candidate}]`, error.message);
+            const detail = providerError(error);
+            failures.push(`${candidate}: ${detail}`);
+            console.error(`[ai:${candidate}]`, detail);
         }
     }
     throw new Error(failures.join(' | ') || 'All configured AI providers failed.');
@@ -143,7 +152,7 @@ async function execute(sock, msg, args, ctx) {
         const label = provider === 'claude' ? 'ᴄʟᴀᴜᴅᴇ' : provider === 'grok' ? 'ɢʀᴏᴋ' : 'ᴏᴘᴇɴᴀɪ';
         return ctx.reply(`🤖 *${label}*\n\n${String(answer).slice(0, 6000)}`);
     } catch (error) {
-        const detail = error.response?.data?.error?.message || error.response?.data?.message || error.message;
+        const detail = providerError(error);
         console.error(`[ai:${provider}]`, detail);
         return ctx.reply(`❌ ᴀɪ ʀᴇǫᴜᴇsᴛ ғᴀɪʟᴇᴅ: ${String(detail).slice(0, 300)}`);
     }
