@@ -27,6 +27,14 @@ function isControlCommand(rawCmd) {
     return CONTROL_ALIASES.has(String(rawCmd || '').toLowerCase());
 }
 
+function isInteractiveControlMessage(msg) {
+    const rowId = msg?.message?.listResponseMessage?.singleSelectReply?.selectedRowId || '';
+    if (rowId.startsWith('group_response_')) return true;
+    const raw = msg?.message?.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson;
+    if (!raw) return false;
+    try { return String(JSON.parse(raw).id || '').startsWith('group_response_'); } catch { return false; }
+}
+
 function isGroupEnabled(jid) {
     const state = getState();
     if (state.mode === 'off') return false;
@@ -167,5 +175,6 @@ module.exports = {
 
     shouldIgnoreGroup,
     isControlCommand,
+    isInteractiveControlMessage,
     handleInteractive,
 };
