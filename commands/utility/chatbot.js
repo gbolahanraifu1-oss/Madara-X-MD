@@ -26,6 +26,8 @@ const PERSONALITIES = {
 
 const PROVIDERS = ['openai', 'grok', 'claude'];
 const GLOBAL_GROUPS_KEY = 'groups';
+const pendingChats = new Set();
+const cooldowns = new Map();
 
 function getKey(ctx) {
     // The remote JID is stable for both sides of a private chat.  `sender`
@@ -101,14 +103,20 @@ async function handleChatbot(sock, msg, ctx) {
     const input = cleanMention(textFromMessage(ctx) || quotedText(ctx), sock);
     if (!input) return false;
 
+    const now = Date.now();
+    if (pendingChats.has(key) || (cooldowns.get(key) || 0) > now) return false;
+    pendingChats.add(key);
+    cooldowns.set(key, now + 2500);
     const tone = selectedTone(key);
     const provider = selectedProvider(key);
     try {
-            const answer = await askProviderWithFallback(provider, input, tone);
+        const answer = await askProviderWithFallback(provider, input, tone);
         return ctx.reply({ text: `🤖 *${PERSONALITIES[tone].label}*\n\n${answer.slice(0, 6000)}` });
     } catch (error) {
         console.error(`[chatbot:${provider}]`, error.message);
         return ctx.reply(`❌ ᴄʜᴀᴛʙᴏᴛ ᴄᴏᴜʟᴅ ɴᴏᴛ ʀᴇsᴘᴏɴᴅ: ${String(error.message).slice(0, 240)}`);
+    } finally {
+        pendingChats.delete(key);
     }
 }
 
