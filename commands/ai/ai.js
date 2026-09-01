@@ -45,11 +45,22 @@ function quotedPrompt(ctx) {
     }
 }
 
-async function askOpenAI(config, prompt) {
+const TONE_INSTRUCTIONS = {
+    warm: 'Use a warm, friendly, encouraging tone.',
+    savage: 'Use a sharp, witty, sarcastic tone without being abusive or hateful.',
+    cold: 'Use a concise, calm, clinical tone.',
+    deadly: 'Use a dark, dramatic Madara-inspired tone while remaining safe and respectful.',
+};
+
+function systemPrompt(tone = 'warm') {
+    return `You are Madara AI. Be helpful, concise, and safe. ${TONE_INSTRUCTIONS[tone] || TONE_INSTRUCTIONS.warm}`;
+}
+
+async function askOpenAI(config, prompt, tone) {
     const response = await axios.post(config.url, {
         model: config.model,
         messages: [
-            { role: 'system', content: 'You are Madara AI. Be helpful, concise, and safe.' },
+            { role: 'system', content: systemPrompt(tone) },
             { role: 'user', content: prompt },
         ],
         temperature: 0.7,
@@ -61,11 +72,11 @@ async function askOpenAI(config, prompt) {
     return response.data?.choices?.[0]?.message?.content;
 }
 
-async function askClaude(config, prompt) {
+async function askClaude(config, prompt, tone) {
     const response = await axios.post(config.url, {
         model: config.model,
         max_tokens: 1200,
-        system: 'You are Madara AI. Be helpful, concise, and safe.',
+        system: systemPrompt(tone),
         messages: [{ role: 'user', content: prompt }],
     }, {
         headers: {
@@ -76,6 +87,17 @@ async function askClaude(config, prompt) {
         timeout: 45_000,
     });
     return response.data?.content?.map(part => part.text || '').join('').trim();
+}
+
+async function askProvider(provider, prompt, tone = 'warm') {
+    const config = PROVIDERS[provider];
+    if (!config) throw new Error(`Unknown AI provider: ${provider}`);
+    if (!process.env[config.env]) throw new Error(`${config.env} is not configured.`);
+    const answer = provider === 'claude'
+        ? await askClaude(config, prompt, tone)
+        : await askOpenAI(config, prompt, tone);
+    if (!answer) throw new Error('The provider returned an empty response.');
+    return String(answer).trim();
 }
 
 async function execute(sock, msg, args, ctx) {
@@ -98,10 +120,7 @@ async function execute(sock, msg, args, ctx) {
 
     await ctx.react('🤔').catch(() => {});
     try {
-        const answer = provider === 'claude'
-            ? await askClaude(config, prompt)
-            : await askOpenAI(config, prompt);
-        if (!answer) throw new Error('The provider returned an empty response.');
+        const answer = await askProvider(provider, prompt, 'warm');
         const label = provider === 'claude' ? 'ᴄʟᴀᴜᴅᴇ' : provider === 'grok' ? 'ɢʀᴏᴋ' : 'ᴏᴘᴇɴᴀɪ';
         return ctx.reply(`🤖 *${label}*\n\n${String(answer).slice(0, 6000)}`);
     } catch (error) {
@@ -119,4 +138,5 @@ module.exports = {
     usage: '†ai your question',
     waitReact: false,
     execute,
+    askProvider,
 };
