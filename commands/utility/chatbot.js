@@ -1,120 +1,159 @@
-// ╔══════════════════════════════════════════════════════╗
-// ║   MADARA X-MD — Chatbot                           ║
-// ║   Responds when bot is tagged or replied to          ║
-// ╚══════════════════════════════════════════════════════╝
+'use strict';
 
-const db       = require('../../lib/db');
-const settings = require('../../settings');
+const db = require('../../lib/db');
 const { wasSentByBot } = require('../../lib/sentTracker');
+const { askProvider } = require('../ai/ai');
+const { sendInteractiveList } = require('../../lib/baileysHelper');
 
-// ── Personality responses ──────────────────────────────────────────────────
 const PERSONALITIES = {
     warm: {
-        label: 'Warm 🌸',
-        greet: ['Hey bestie! 💕 What can I do for you?', 'Hiii! You called? 🌸', 'Heyyy! 😊 What do you need?'],
-        unknown: ['Aww I\'m not sure about that 🥺 but I\'m here for you!', 'Hmm I don\'t know, but let\'s figure it out together! 💕', 'I\'m not sure, but you can ask me anything!'],
-        bye: ['Take care! 💕', 'See you later bestie! 🌸', 'Bye for now! 😊']
+        label: 'ᴡᴀʀᴍ 🌸',
+        instruction: 'Use a warm, friendly, encouraging tone.',
     },
     savage: {
-        label: 'Savage 😤',
-        greet: ['What do you want? 😤', 'Yeah? Speak fast.', 'You rang? Make it quick. ⚡'],
-        unknown: ['Figure it out yourself 😒', 'I don\'t do that. Next question.', 'Not my problem 💅'],
-        bye: ['Finally 🙄', 'Took you long enough to leave 💅', 'Bye. Don\'t make it weird.']
+        label: 'sᴀᴠᴀɢᴇ 😤',
+        instruction: 'Use a sharp, witty, sarcastic tone without being abusive or hateful.',
     },
     cold: {
-        label: 'Cold 🧊',
-        greet: ['Yes?', 'What.', 'Processing your request.'],
-        unknown: ['Unknown query.', 'Insufficient data.', 'No relevant response found.'],
-        bye: ['Acknowledged.', 'Session ended.', 'Goodbye.']
+        label: 'ᴄᴏʟᴅ 🧊',
+        instruction: 'Use a concise, calm, clinical tone.',
     },
     deadly: {
-        label: 'Deadly ☠️',
-        greet: ['You dare summon me? ☠️', 'Another soul seeks my attention... 💀', 'Speak before I lose interest. ☠️'],
-        unknown: ['Silence is my answer 💀', 'Not worth my time ☠️', 'Unworthy question. Try again.'],
-        bye: ['Disappear. ☠️', 'Your time is up 💀', 'Don\'t come back unless you have something worthy.']
-    }
+        label: 'ᴅᴇᴀᴅʟʏ ☠️',
+        instruction: 'Use a dark, dramatic Madara-inspired tone while remaining safe and respectful.',
+    },
 };
 
-function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+const PROVIDERS = ['openai', 'grok', 'claude'];
+const GLOBAL_GROUPS_KEY = 'groups';
 
-function buildResponse(mode, body) {
-    const p   = PERSONALITIES[mode] || PERSONALITIES.warm;
-    const low = body.toLowerCase();
+function getKey(ctx) {
+    // The remote JID is stable for both sides of a private chat.  `sender`
+    // can change between PN and LID forms, which was why DM toggles appeared
+    // to work but later messages were ignored.
+    return ctx.from;
+}
 
-    if (!body || low.match(/^(hi|hello|hey|sup|yo|oi|hola|salut|howdy)/)) return pick(p.greet);
-    if (low.match(/bye|goodbye|cya|later|gtg/)) return pick(p.bye);
+function stripDevice(jid) {
+    return String(jid || '').split(':')[0].split('@')[0];
+}
 
-    // Echo meaningful content with personality flavour
-    switch (mode) {
-        case 'warm':    return `Aww, you said "_${body}_"? That's interesting! 💕 Tell me more?`;
-        case 'savage':  return `"_${body}_"? Really? That's what you went with? 😒`;
-        case 'cold':    return `Noted: "_${body}". Standby for processing.`;
-        case 'deadly':  return `"_${body}_"... Interesting last words. ☠️`;
-        default:        return pick(p.greet);
+function matchesBot(jid, sock) {
+    const id = stripDevice(jid);
+    const pn = stripDevice(sock.user?.id);
+    const lid = stripDevice(sock.user?.lid);
+    return Boolean(id && ((pn && id === pn) || (lid && id === lid)));
+}
+
+function textFromMessage(ctx) {
+    return String(ctx.body || '').trim();
+}
+
+function quotedText(ctx) {
+    try { return String(ctx.getQuotedText?.() || '').trim(); } catch { return ''; }
+}
+
+function cleanMention(text, sock) {
+    let result = String(text || '');
+    for (const jid of [sock.user?.id, sock.user?.lid]) {
+        const number = stripDevice(jid);
+        if (number) result = result.replace(new RegExp(`@${number}\\b`, 'g'), '');
+    }
+    return result.trim();
+}
+
+function selectedTone(key) {
+    return PERSONALITIES[db.get('chatbot_mode', key, 'warm')]
+        ? db.get('chatbot_mode', key, 'warm')
+        : 'warm';
+}
+
+function selectedProvider(key) {
+    const provider = db.get('chatbot_provider', key, process.env.DEFAULT_AI_PROVIDER || 'openai');
+    return PROVIDERS.includes(provider) ? provider : 'openai';
+}
+
+function groupResponseEnabled() {
+    return db.get('chatbot_global', GLOBAL_GROUPS_KEY, true) !== false;
+}
+
+function isReplyToBot(msg, sock) {
+    const contextInfo = msg.message?.extendedTextMessage?.contextInfo
+        || msg.message?.imageMessage?.contextInfo
+        || msg.message?.videoMessage?.contextInfo
+        || msg.message?.conversation?.contextInfo;
+    return matchesBot(contextInfo?.participant, sock)
+        || matchesBot(contextInfo?.remoteJid, sock);
+}
+
+async function handleChatbot(sock, msg, ctx) {
+    const { from, body, isGroup } = ctx;
+    if (msg.key.fromMe && wasSentByBot(msg.key.id)) return false;
+
+    const key = getKey(ctx);
+    if (isGroup && !groupResponseEnabled()) return false;
+    if (!db.get('chatbot', key, false)) return false;
+
+    const botTagged = (ctx.getMentions?.() || []).some(jid => matchesBot(jid, sock));
+    const repliedToBot = isReplyToBot(msg, sock);
+    if (isGroup && !botTagged && !repliedToBot) return false;
+
+    const input = cleanMention(textFromMessage(ctx) || quotedText(ctx), sock);
+    if (!input) return false;
+
+    const tone = selectedTone(key);
+    const provider = selectedProvider(key);
+    try {
+        const answer = await askProvider(provider, input, tone);
+        return ctx.reply({ text: `🤖 *${PERSONALITIES[tone].label}*\n\n${answer.slice(0, 6000)}` });
+    } catch (error) {
+        console.error(`[chatbot:${provider}]`, error.message);
+        return ctx.reply(`❌ ᴄʜᴀᴛʙᴏᴛ ᴄᴏᴜʟᴅ ɴᴏᴛ ʀᴇsᴘᴏɴᴅ: ${String(error.message).slice(0, 240)}`);
     }
 }
 
-// ── Called from handler.js on every non-command message ───────────────────
-async function handleChatbot(sock, msg, ctx) {
-    const { from, sender, body, isGroup } = ctx;
-
-    // Only skip if THIS exact message is an echo of something the bot itself
-    // just sent — not just because fromMe is true (owner's own typed
-    // messages also have fromMe:true in a self-bot, and those SHOULD be
-    // processed normally, e.g. replying to themselves in self-chat).
-    if (msg.key.fromMe && wasSentByBot(msg.key.id)) return false;
-
-    // Check if chatbot is enabled for this group/chat
-    const key     = isGroup ? from : sender;
-    const enabled = db.get('chatbot', key, false);
-    if (!enabled) return false;
-
-    const mode = db.get('chatbot_mode', key, 'warm');
-
-    // ── LID-aware bot identity ──────────────────────────────────────────
-    // WhatsApp is rolling out @lid as a privacy ID format that is NOT
-    // derived from the phone number — it's a completely separate ID space.
-    // sock.user.id is the bot's PN-based JID, sock.user.lid (when present)
-    // is its LID-based identity. Mentions/replies in @lid groups will use
-    // the LID form, so we must check BOTH to reliably detect a tag/reply.
-    const stripDevice = (jid) => (jid || '').split(':')[0].split('@')[0];
-    const botPnNum  = stripDevice(sock.user?.id);
-    const botLidNum = stripDevice(sock.user?.lid);
-
-    const matchesBot = (jid) => {
-        if (!jid) return false;
-        const num = stripDevice(jid);
-        return (botPnNum && num === botPnNum) || (botLidNum && num === botLidNum);
-    };
-
-    const mentions  = ctx.getMentions?.() || [];
-    const botTagged = mentions.some(matchesBot);
-
-    // Check if the message is a reply to the bot's message
-    const quotedParticipant = msg.message?.extendedTextMessage?.contextInfo?.participant;
-    const fromBotMessage    = matchesBot(quotedParticipant);
-
-    if (!isGroup) {
-        // In private chat: always respond if chatbot is ON
-    } else {
-        // In group: only respond if bot is mentioned or someone replies to bot
-        if (!botTagged && !fromBotMessage) return false;
+async function listGroups(sock, msg, ctx) {
+    if (!ctx.isOwner) return ctx.reply('❌ ᴏɴʟʏ ᴛʜᴇ ʙᴏᴛ ᴏᴡɴᴇʀ ᴄᴀɴ ᴍᴀɴᴀɢᴇ ᴛʜᴇ ɢʀᴏᴜᴘ ʟɪsᴛ.');
+    let groups = {};
+    try { groups = await sock.groupFetchAllParticipating(); } catch {
+        return ctx.reply('❌ ᴄᴏᴜʟᴅ ɴᴏᴛ ʟᴏᴀᴅ ᴛʜᴇ ɢʀᴏᴜᴘ ʟɪsᴛ.');
     }
-
-    // Strip the bot's tag (either PN or LID form) from the message
-    const cleanBody = body
-        .replace(new RegExp(`@${botPnNum}`, 'g'), '')
-        .replace(new RegExp(`@${botLidNum}`, 'g'), '')
-        .trim();
-    const response = await buildResponse(mode, cleanBody || body);
+    const entries = Object.entries(groups).slice(0, 100);
+    if (!entries.length) return ctx.reply('📭 ɴᴏ ɢʀᴏᴜᴘs ғᴏᴜɴᴅ.');
 
     try {
-        await sock.sendMessage(from, {
-            text: response,
-            mentions: [sender]
-        }, { quoted: msg });
-    } catch {}
+        return await sendInteractiveList(sock, ctx.from, {
+            body: '🤖 ᴄʜᴏᴏsᴇ ᴀ ɢʀᴏᴜᴘ ᴛᴏ ᴛᴏɢɢʟᴇ ᴄʜᴀᴛʙᴏᴛ',
+            footer: 'ᴛᴀᴘ ᴀ ɢʀᴏᴜᴘ ᴛᴏ ᴇɴᴀʙʟᴇ ᴏʀ ᴅɪsᴀʙʟᴇ ɪᴛ',
+            btnTitle: '📋 ɢʀᴏᴜᴘ ʟɪsᴛ',
+            sections: [{
+                title: 'ɢʀᴏᴜᴘs',
+                rows: entries.map(([jid, group]) => ({
+                    title: String(group.subject || jid).slice(0, 60),
+                    description: db.get('chatbot', jid, false) ? 'ᴄʜᴀᴛʙᴏᴛ ᴏɴ' : 'ᴄʜᴀᴛʙᴏᴛ ᴏғғ',
+                    rowId: `chatbot_group_${encodeURIComponent(jid)}`,
+                })),
+            }],
+        }, msg);
+    } catch {
+        return ctx.reply(entries.map(([jid, group]) =>
+            `${group.subject || jid}: ${db.get('chatbot', jid, false) ? 'ᴏɴ' : 'ᴏғғ'}`
+        ).join('\n'));
+    }
+}
 
+async function handleInteractive(sock, msg, ctx, selectedId) {
+    if (!String(selectedId || '').startsWith('chatbot_group_')) return false;
+    let groupJid = '';
+    try { groupJid = decodeURIComponent(String(selectedId).replace('chatbot_group_', '')); } catch {}
+    if (!groupJid.endsWith('@g.us')) return true;
+    if ((!ctx.isGroup && !ctx.isOwner) || (ctx.isGroup && ctx.from !== groupJid)) {
+        await ctx.reply('❌ ᴛʜɪs ɢʀᴏᴜᴘ ᴄᴀɴ ᴏɴʟʏ ʙᴇ ᴄᴏɴᴛʀᴏʟʟᴇᴅ ғʀᴏᴍ ᴛʜᴇ ɢʀᴏᴜᴘ ᴏʀ ʙʏ ᴛʜᴇ ᴏᴡɴᴇʀ.');
+        return true;
+    }
+    const enabled = !db.get('chatbot', groupJid, false);
+    db.set('chatbot', groupJid, enabled);
+    await ctx.reply(`🤖 ᴄʜᴀᴛʙᴏᴛ ${enabled ? 'ᴇɴᴀʙʟᴇᴅ' : 'ᴅɪsᴀʙʟᴇᴅ'} ғᴏʀ ᴛʜᴀᴛ ɢʀᴏᴜᴘ.`);
     return true;
 }
 
@@ -122,58 +161,78 @@ module.exports = {
     name: 'chatbot',
     aliases: ['cb', 'togglechatbot', 'chatbotmode'],
     category: 'utility',
-    desc: 'Toggle chatbot — bot replies when tagged or replied to, with selectable personality',
-    usage: '†chatbot [on|off|mode warm|savage|cold|deadly|status]',
+    desc: 'ᴜsᴇ ᴀɪ ᴡʜᴇɴ ᴛᴀɢɢᴇᴅ ᴏʀ ʀᴇᴘʟɪᴇᴅ ᴛᴏ',
+    usage: '†chatbot on|off|mode|provider|groups|response|status',
+
     async execute(sock, msg, args, ctx) {
-        const s   = ctx.settings;
-        const sub = (args[0] || 'status').toLowerCase();
-        const key = ctx.isGroup ? ctx.from : ctx.sender;
+        const s = ctx.settings;
+        const sub = String(args[0] || 'status').toLowerCase();
+        const key = getKey(ctx);
 
-        if (sub === 'on') {
-            db.set('chatbot', key, true);
-            const mode = db.get('chatbot_mode', key, 'warm');
+        if (sub === 'on' || sub === 'off') {
+            const enabled = sub === 'on';
+            db.set('chatbot', key, enabled);
             return ctx.reply(
-                `🤖 *Chatbot: ON*\n\n` +
-                `Current personality: *${PERSONALITIES[mode]?.label || mode}*\n\n` +
-                `_Tag me or reply to my messages and I'll respond!_\n` +
-                `Change personality: \`${s.prefix}chatbot mode [warm|savage|cold|deadly]\`${s.FOOTER}`
+                `🤖 *ᴄʜᴀᴛʙᴏᴛ: ${enabled ? 'ᴏɴ' : 'ᴏғғ'}*\n\n` +
+                (enabled ? 'ᴛᴀɢ ᴍᴇ ᴏʀ ʀᴇᴘʟʏ ᴛᴏ ᴍʏ ᴍᴇssᴀɢᴇs ᴀɴᴅ ɪ ᴡɪʟʟ ʀᴇsᴘᴏɴᴅ.' : 'ɪ ᴡɪʟʟ ɴᴏᴛ ʀᴇsᴘᴏɴᴅ ᴡɪᴛʜ ᴀᴜᴛᴏᴍᴀᴛɪᴄ ᴀɪ ʀᴇᴘʟɪᴇs.') +
+                `\n\nᴛᴏɴᴇ: ${PERSONALITIES[selectedTone(key)].label}${s.FOOTER}`
             );
         }
 
-        if (sub === 'off') {
-            db.set('chatbot', key, false);
-            return ctx.reply(`🤖 *Chatbot: OFF*\n\n_I'll only respond to commands now._${s.FOOTER}`);
+        if (sub === 'mode' || sub === 'tone') {
+            const tone = String(args[1] || '').toLowerCase();
+            if (!PERSONALITIES[tone]) {
+                return ctx.reply(`❌ ᴜsᴇ: ${s.prefix}chatbot mode warm|savage|cold|deadly${s.FOOTER}`);
+            }
+            db.set('chatbot_mode', key, tone);
+            return ctx.reply(`✅ ᴄʜᴀᴛʙᴏᴛ ᴛᴏɴᴇ sᴇᴛ ᴛᴏ ${PERSONALITIES[tone].label}.${s.FOOTER}`);
         }
 
-        if (sub === 'mode') {
-            const newMode = (args[1] || '').toLowerCase();
-            if (!PERSONALITIES[newMode]) return ctx.reply(
-                `❌ Unknown personality.\n\nAvailable: *warm* 🌸 | *savage* 😤 | *cold* 🧊 | *deadly* ☠️${s.FOOTER}`
-            );
-            db.set('chatbot_mode', key, newMode);
-            return ctx.reply(
-                `🤖 *Chatbot personality set to: ${PERSONALITIES[newMode].label}*\n\n` +
-                `_${pick(PERSONALITIES[newMode].greet)}_${s.FOOTER}`
-            );
+        if (sub === 'provider') {
+            const provider = String(args[1] || '').toLowerCase();
+            if (!PROVIDERS.includes(provider)) return ctx.reply(`❌ ᴜsᴇ: ${s.prefix}chatbot provider openai|grok|claude${s.FOOTER}`);
+            db.set('chatbot_provider', key, provider);
+            return ctx.reply(`✅ ᴄʜᴀᴛʙᴏᴛ ᴘʀᴏᴠɪᴅᴇʀ sᴇᴛ ᴛᴏ ${provider}.${s.FOOTER}`);
         }
 
-        // Status
+        if (sub === 'list' || (sub === 'groups' && ['list', ''].includes(args[1] || ''))) {
+            return listGroups(sock, msg, ctx);
+        }
+
+        if (sub === 'response' || sub === 'groups') {
+            const value = String(args[1] || '').toLowerCase();
+            if (!['on', 'off'].includes(value)) {
+                return ctx.reply(`❌ ᴜsᴇ: ${s.prefix}chatbot response on|off${s.FOOTER}`);
+            }
+            db.set('chatbot_global', GLOBAL_GROUPS_KEY, value === 'on');
+            return ctx.reply(`✅ ɢʀᴏᴜᴘ ᴀɪ ʀᴇsᴘᴏɴsᴇs ᴀʀᴇ ${value === 'on' ? 'ᴏɴ' : 'ᴏғғ'} ғᴏʀ ᴀʟʟ ɢʀᴏᴜᴘs.${s.FOOTER}`);
+        }
+
+        if (sub === 'group') {
+            const value = String(args[2] || args[1] || '').toLowerCase();
+            if (ctx.isGroup && (!value || ['on', 'off'].includes(value))) {
+                const enabled = value === 'on';
+                db.set('chatbot', ctx.from, enabled);
+                return ctx.reply(`✅ ᴄʜᴀᴛʙᴏᴛ ɪs ${enabled ? 'ᴏɴ' : 'ᴏғғ'} ɪɴ ᴛʜɪs ɢʀᴏᴜᴘ.${s.FOOTER}`);
+            }
+            return listGroups(sock, msg, ctx);
+        }
+
         const enabled = db.get('chatbot', key, false);
-        const mode    = db.get('chatbot_mode', key, 'warm');
-        ctx.reply(
-            `🤖 *Chatbot Status*\n\n` +
-            `Status: ${enabled ? '✅ ON' : '❌ OFF'}\n` +
-            `Personality: *${PERSONALITIES[mode]?.label || mode}*\n\n` +
-            `*Personalities:*\n` +
-            `• \`warm\` 🌸 — friendly & caring\n` +
-            `• \`savage\` 😤 — blunt & sarcastic\n` +
-            `• \`cold\` 🧊 — short & robotic\n` +
-            `• \`deadly\` ☠️ — dark & intimidating\n\n` +
-            `*Commands:*\n` +
-            `• \`${s.prefix}chatbot on/off\`\n` +
-            `• \`${s.prefix}chatbot mode [personality]\`${s.FOOTER}`
+        return ctx.reply(
+            `🤖 *ᴄʜᴀᴛʙᴏᴛ sᴛᴀᴛᴜs*\n\n` +
+            `sᴛᴀᴛᴜs: ${enabled ? 'ᴏɴ' : 'ᴏғғ'}\n` +
+            `ᴛᴏɴᴇ: ${PERSONALITIES[selectedTone(key)].label}\n` +
+            `ᴘʀᴏᴠɪᴅᴇʀ: ${selectedProvider(key)}\n` +
+            `ɢʀᴏᴜᴘ ʀᴇsᴘᴏɴsᴇs: ${groupResponseEnabled() ? 'ᴏɴ' : 'ᴏғғ'}\n\n` +
+            `${s.prefix}chatbot on|off\n` +
+            `${s.prefix}chatbot mode warm|savage|cold|deadly\n` +
+            `${s.prefix}chatbot provider openai|grok|claude\n` +
+            `${s.prefix}chatbot groups list\n` +
+            `${s.prefix}chatbot response on|off${s.FOOTER}`
         );
-    }
-};
+    },
 
-module.exports.handleChatbot = handleChatbot;
+    handleChatbot,
+    handleInteractive,
+};
