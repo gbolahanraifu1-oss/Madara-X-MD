@@ -34,7 +34,7 @@ function resolveRequest(args, ctx) {
     const explicit = ALIAS_PROVIDER[String(args[0] || '').toLowerCase()];
     const provider = alias || explicit || String(process.env.DEFAULT_AI_PROVIDER || 'grok').toLowerCase();
     const promptArgs = alias ? args : (explicit ? args.slice(1) : args);
-    return { provider: PROVIDERS[provider] ? provider : 'openai', prompt: promptArgs.join(' ').trim() };
+    return { provider: PROVIDERS[provider] ? provider : 'grok', prompt: promptArgs.join(' ').trim() };
 }
 
 function quotedPrompt(ctx) {
