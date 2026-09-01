@@ -2,7 +2,7 @@
 
 const db = require('../../lib/db');
 const { wasSentByBot } = require('../../lib/sentTracker');
-const { askProvider } = require('../ai/ai');
+const { askProviderWithFallback } = require('../ai/ai');
 const { sendInteractiveList } = require('../../lib/baileysHelper');
 
 const PERSONALITIES = {
@@ -104,7 +104,7 @@ async function handleChatbot(sock, msg, ctx) {
     const tone = selectedTone(key);
     const provider = selectedProvider(key);
     try {
-        const answer = await askProvider(provider, input, tone);
+            const answer = await askProviderWithFallback(provider, input, tone);
         return ctx.reply({ text: `🤖 *${PERSONALITIES[tone].label}*\n\n${answer.slice(0, 6000)}` });
     } catch (error) {
         console.error(`[chatbot:${provider}]`, error.message);
