@@ -32,7 +32,7 @@ const ALIAS_PROVIDER = {
 function resolveRequest(args, ctx) {
     const alias = ALIAS_PROVIDER[String(ctx.rawCmd || '').toLowerCase()];
     const explicit = ALIAS_PROVIDER[String(args[0] || '').toLowerCase()];
-    const provider = alias || explicit || String(process.env.DEFAULT_AI_PROVIDER || 'openai').toLowerCase();
+    const provider = alias || explicit || String(process.env.DEFAULT_AI_PROVIDER || 'grok').toLowerCase();
     const promptArgs = alias ? args : (explicit ? args.slice(1) : args);
     return { provider: PROVIDERS[provider] ? provider : 'openai', prompt: promptArgs.join(' ').trim() };
 }
@@ -100,6 +100,25 @@ async function askProvider(provider, prompt, tone = 'warm') {
     return String(answer).trim();
 }
 
+async function askProviderWithFallback(provider, prompt, tone = 'warm') {
+    const preferred = PROVIDERS[provider] ? provider : 'grok';
+    const chain = preferred === 'openai'
+        ? ['openai', 'grok', 'claude']
+        : preferred === 'claude'
+            ? ['claude', 'grok']
+            : ['grok', 'claude'];
+    const failures = [];
+    for (const candidate of chain) {
+        try {
+            return await askProvider(candidate, prompt, tone);
+        } catch (error) {
+            failures.push(`${candidate}: ${error.message}`);
+            console.error(`[ai:${candidate}]`, error.message);
+        }
+    }
+    throw new Error(failures.join(' | ') || 'All configured AI providers failed.');
+}
+
 async function execute(sock, msg, args, ctx) {
     const { provider, prompt: suppliedPrompt } = resolveRequest(args, ctx);
     const prompt = suppliedPrompt || quotedPrompt(ctx);
@@ -120,7 +139,7 @@ async function execute(sock, msg, args, ctx) {
 
     await ctx.react('🤔').catch(() => {});
     try {
-        const answer = await askProvider(provider, prompt, 'warm');
+        const answer = await askProviderWithFallback(provider, prompt, 'warm');
         const label = provider === 'claude' ? 'ᴄʟᴀᴜᴅᴇ' : provider === 'grok' ? 'ɢʀᴏᴋ' : 'ᴏᴘᴇɴᴀɪ';
         return ctx.reply(`🤖 *${label}*\n\n${String(answer).slice(0, 6000)}`);
     } catch (error) {
@@ -139,4 +158,5 @@ module.exports = {
     waitReact: false,
     execute,
     askProvider,
+    askProviderWithFallback,
 };
