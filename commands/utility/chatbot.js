@@ -69,8 +69,8 @@ function selectedTone(key) {
 }
 
 function selectedProvider(key) {
-    const provider = db.get('chatbot_provider', key, process.env.DEFAULT_AI_PROVIDER || 'openai');
-    return PROVIDERS.includes(provider) ? provider : 'openai';
+    const provider = db.get('chatbot_provider', key, process.env.DEFAULT_AI_PROVIDER || 'grok');
+    return PROVIDERS.includes(provider) ? provider : 'grok';
 }
 
 function groupResponseEnabled() {
