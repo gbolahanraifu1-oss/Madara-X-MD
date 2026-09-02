@@ -171,8 +171,9 @@ module.exports = {
             await ctx.react('✅');
 
         } catch (err) {
-            console.error('[play]', err.message);
-            ctx.reply(`❌ ${err.message.includes('blocked') ? 'Content blocked/unavailable.' : err.message.slice(0,80)}${s.FOOTER}`);
+            const errorText = err?.message || String(err || 'Unknown playback error');
+            console.error('[play]', errorText);
+            ctx.reply(`❌ ${errorText.toLowerCase().includes('blocked') ? 'Content blocked/unavailable.' : errorText.slice(0, 80)}${s.FOOTER}`);
             ctx.react('❌').catch(() => {});
         }
     }
