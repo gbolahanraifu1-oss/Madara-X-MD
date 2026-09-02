@@ -29,6 +29,31 @@ async function tryWithRetry(fn, times = 3) {
     throw last;
 }
 
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+async function getFollowingRedirects(url, options = {}, maxRedirects = 5) {
+    let currentUrl = url;
+    for (let attempt = 0; attempt <= maxRedirects; attempt++) {
+        const response = await axios.get(currentUrl, {
+            ...options,
+            maxRedirects: 0,
+            validateStatus: status => status >= 200 && status < 400
+        });
+        if (!REDIRECT_STATUSES.has(response.status)) {
+            if (response.status >= 400) throw new Error('HTTP status: ' + response.status);
+            return response;
+        }
+
+        const location = response.headers?.location;
+        response.data?.destroy?.();
+        if (!location) {
+            throw new Error('Redirect missing Location header (HTTP status: ' + response.status + ')');
+        }
+        currentUrl = new URL(location, currentUrl).toString();
+    }
+    throw new Error('Too many redirects (>' + maxRedirects + ')');
+}
+
 async function getAudioUrl(videoUrl) {
     const enc  = encodeURIComponent(videoUrl);
     const apis = [
@@ -45,10 +70,13 @@ async function getAudioUrl(videoUrl) {
     ];
     for (const api of apis) {
         try {
-            const { data } = await tryWithRetry(() => axios.get(api.url, AX));
+            const { data } = await tryWithRetry(() => getFollowingRedirects(api.url, AX));
             const url = api.get(data);
             if (url?.startsWith('http')) { console.log('[play] via', api.name); return url; }
-        } catch (e) { console.log('[play] miss:', api.name, e.message.slice(0,50)); }
+        } catch (e) {
+            const reason = e?.message || String(e);
+            console.log('[play] miss:', api.name, reason.slice(0, 80));
+        }
     }
     return null;
 }
@@ -56,21 +84,27 @@ async function getAudioUrl(videoUrl) {
 async function downloadBuffer(url) {
     // Try arraybuffer first, then stream
     try {
-        const r = await axios.get(url, {
+        const r = await getFollowingRedirects(url, {
             responseType: 'arraybuffer', timeout: 90000,
             maxContentLength: Infinity, maxBodyLength: Infinity,
             headers: { 'User-Agent': AX.headers['User-Agent'], 'Accept': '*/*', 'Accept-Encoding': 'identity' }
         });
+        const contentType = String(r.headers?.['content-type'] || '').toLowerCase();
         const buf = Buffer.from(r.data);
-        if (buf.length > 1000) return buf;
+        if (buf.length > 1000 && !/text\/(?:html|plain)|application\/(?:json|html)/i.test(contentType)) return buf;
     } catch {}
 
     // Stream fallback
-    const r = await axios.get(url, {
+    const r = await getFollowingRedirects(url, {
         responseType: 'stream', timeout: 90000,
         maxContentLength: Infinity, maxBodyLength: Infinity,
         headers: { 'User-Agent': AX.headers['User-Agent'], 'Accept': '*/*', 'Accept-Encoding': 'identity' }
     });
+    const streamType = String(r.headers?.['content-type'] || '').toLowerCase();
+    if (/text\/(?:html|plain)|application\/(?:json|html)/i.test(streamType)) {
+        r.data.destroy?.();
+        throw new Error('Provider returned ' + (streamType || 'text') + ' instead of audio');
+    }
     const chunks = [];
     await new Promise((res, rej) => {
         r.data.on('data', c => chunks.push(c));
