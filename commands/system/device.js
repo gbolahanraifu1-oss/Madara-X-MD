@@ -93,15 +93,17 @@ module.exports = {
         const targetNumber = String(targetJid).split('@')[0].split(':')[0] || 'unknown';
         const deviceSlot = String(targetJid).match(/:(\d+)@/)?.[1];
         const cacheKey = cacheKeyForJid(targetJid);
-        const cachedDevice = cacheKey ? deviceCache.get(cacheKey) : null;
         const userAgent = getMessageUserAgent(msg);
+        // A number can have multiple linked devices. Only cache a real
+        // user-agent result; ID-based detections must be evaluated per message.
+        const cachedDevice = userAgent && cacheKey ? deviceCache.get(cacheKey) : null;
         const detectedDevice = userAgent
             ? getFullDeviceName(userAgent)
             : deviceFromMessageId(messageId);
         const device = cachedDevice || detectedDevice;
         const cacheHit = Boolean(cachedDevice);
 
-        if (!cachedDevice && cacheKey && device !== 'Unknown Device') {
+        if (userAgent && !cachedDevice && cacheKey && device !== 'Unknown Device') {
             deviceCache.set(cacheKey, device);
         }
 
