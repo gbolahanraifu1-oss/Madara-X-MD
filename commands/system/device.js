@@ -56,6 +56,8 @@ function deviceFromMessageId(messageId) {
     const id = String(messageId || '').toUpperCase();
     if (id.startsWith('3EB0')) return 'iPhone / iOS';
     if (id.startsWith('3A')) return 'Android';
+    // WhatsApp has started emitting A5F* IDs for Android messages.
+    if (id.startsWith('A5F')) return 'Android';
     if (id.startsWith('BAE5')) return 'WhatsApp Web / Desktop';
     return 'Unknown Device';
 }
