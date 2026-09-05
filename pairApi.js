@@ -123,6 +123,24 @@ async function handleRequest(req, res) {
         return;
     }
 
+    // ── GET /status?phone=… ─────────────────────────────────
+    if (pathname === '/status' && req.method === 'GET') {
+        const phone = String(parsed.query.phone || '').replace(/[^0-9]/g, '');
+        if (!phone || phone.length < 7 || phone.length > 15) {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: 'Invalid phone number' }));
+            return;
+        }
+
+        const session = activeSessions.get(phone);
+        res.writeHead(200);
+        res.end(JSON.stringify({
+            connected: Boolean(session?.connected),
+            phone,
+        }));
+        return;
+    }
+
     // ── GET /pair?phone=… ─────────────────────────────────
     if (pathname === '/pair' && req.method === 'GET') {
         if (maintenance.isOn()) {
