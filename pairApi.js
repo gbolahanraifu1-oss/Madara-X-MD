@@ -2,7 +2,7 @@
 // 💣 MADARA X-MD  |  Web Pairing API
 // GET  /health              → { status, uptime, port }
 // GET  /ping                → { ok, ts }  (keep-alive probe)
-// GET  /pair?phone=…        → { code, phone, ms }
+// GET  /pair?phone=…&mode=normal|custom → { code, phone, mode, ms }
 // POST /warm                → { ok } — pre-warms socket early
 // POST /session/clear       → { ok, phone } — wipe & allow re-pair
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -132,6 +132,13 @@ async function handleRequest(req, res) {
             return;
         }
 
+        const mode = String(parsed.query.mode || 'normal').toLowerCase();
+        if (!['normal', 'custom'].includes(mode)) {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: 'Invalid pairing mode. Use normal or custom.' }));
+            return;
+        }
+
         const session = activeSessions.get(phone);
         res.writeHead(200);
         res.end(JSON.stringify({
@@ -191,7 +198,7 @@ async function handleRequest(req, res) {
             const sock = await sockPromise;
             if (!sock) throw new Error('Could not start session');
 
-            const code      = await getPairingCode(sock, phone);
+            const code      = await getPairingCode(sock, phone, mode);
             const formatted = String(code).toUpperCase();
             const ms        = Date.now() - started;
             console.log(`[WebPair] ✅ Code for +${phone}: ${formatted} (${ms} ms)`);
@@ -201,7 +208,7 @@ async function handleRequest(req, res) {
                 responded = true;
                 clearTimeout(httpTimer);
                 res.writeHead(200);
-                res.end(JSON.stringify({ code: formatted, phone, ms }));
+                res.end(JSON.stringify({ code: formatted, phone, mode, ms }));
             }
         } catch (err) {
             _pending.delete(phone);
