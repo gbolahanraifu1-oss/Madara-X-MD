@@ -1,6 +1,6 @@
 {
   "name": "madara-x-md",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "MADARA X-MD \u2014 Powered by MADARA X-MD INC.",
   "main": "index.js",
   "scripts": {

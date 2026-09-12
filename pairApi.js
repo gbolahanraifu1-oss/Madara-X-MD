@@ -12,7 +12,7 @@
 const http = require('http');
 const url  = require('url');
 
-const PORT = parseInt(process.env.PORT || process.env.WEB_PORT || 24823, 10);
+const PORT = parseInt(process.env.PORT || process.env.WEB_PORT || 24922, 10);
 
 // In-flight deduplication: phone → true
 const _pending  = new Map();
@@ -20,7 +20,7 @@ const _pending  = new Map();
 const _warming  = new Map();
 
 // Shared pairing code logic from pairManager (single source of truth)
-const { getPairingCode } = require('./lib/pairManager');
+const { activeSessions, getPairingCode } = require('./lib/pairManager');
 const maintenance        = require('./lib/maintenance');
 
 let _getOrCreateSock = null;

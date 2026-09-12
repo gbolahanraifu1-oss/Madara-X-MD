@@ -171,6 +171,13 @@
       "lastDaily": 1787147298921,
       "lastFish": 1787147346403,
       "bank": 100
+    },
+    "2348123094927": {
+      "balance": 287,
+      "lastWork": 1788704344756,
+      "inventory": {
+        "rod": 1
+      }
     }
   },
   "sessions": {

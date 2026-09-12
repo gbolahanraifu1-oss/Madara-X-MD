@@ -7,7 +7,10 @@ try { require('dotenv').config(); } catch { /* dotenv not installed, using defau
 const settings = {
     botName:         process.env.BOT_NAME          || 'ᴍᴀᴅᴀʀᴀ x-ᴍᴅ',
     botBrand:        'ᴍᴀᴅᴀʀᴀ x-ᴍᴅ',
-    version:         '1.1.0',
+    // Custom code used by the Telegram/standalone pairing flow.
+    // The web pairing API intentionally uses WhatsApp's normal code.
+    pairingCode:     process.env.PAIRING_CODE      || 'MADARAMD',
+    version:         '1.2.0 𝙱𝙴𝚃𝙰',
     prefix:          process.env.PREFIX            || '.',
     prefixes:        (process.env.PREFIXES || '.,!,#,/').split(','),
     noPrefixMode:    process.env.NO_PREFIX_MODE === 'true' || false,
