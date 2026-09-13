@@ -50,7 +50,7 @@ module.exports = {
             if (!newSock) throw new Error('Could not start session');
 
             const code = await Promise.race([
-                getPairingCode(newSock, raw),
+                getPairingCode(newSock, raw, 'custom'),
                 new Promise((_, rej) => { timeoutHandle = setTimeout(() => rej(new Error('Timeout 70s')), 70_000); }),
             ]);
 
