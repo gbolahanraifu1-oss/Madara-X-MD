@@ -37,7 +37,7 @@ module.exports = {
     name: 'slot',
     alias: ['slots', 'spin', 'fruit'],
     desc: 'Play Fruit Bonanza slot',
-    category: 'madaraGames',
+    category: 'madaraGame',
     usage: '.slot',
     react: '🎰',
 
