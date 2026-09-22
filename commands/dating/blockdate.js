@@ -1,1 +1,0 @@
-const d=require('../../lib/dating');module.exports={name:'blockdate',aliases:['dateblock'],category:'dating',desc:'Block a dating profile',usage:'†blockdate @user',privateOnly:true,async execute(s,m,a,c){return d.block(c,a);}};
