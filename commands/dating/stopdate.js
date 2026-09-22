@@ -1,1 +1,0 @@
-const d=require('../../lib/dating');module.exports={name:'stopdate',aliases:['pausedate'],category:'dating',desc:'Pause matchmaking',usage:'†stopdate',privateOnly:true,async execute(s,m,a,c){return d.toggle(c,false);}};
