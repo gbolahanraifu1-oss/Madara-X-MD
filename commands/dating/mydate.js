@@ -1,1 +1,0 @@
-const d=require('../../lib/dating');module.exports={name:'mydate',aliases:['dateprofile'],category:'dating',desc:'View your dating profile',usage:'†mydate',privateOnly:true,async execute(s,m,a,c){return d.view(c);}};
