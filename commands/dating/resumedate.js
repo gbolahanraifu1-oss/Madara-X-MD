@@ -1,1 +1,0 @@
-const d=require('../../lib/dating');module.exports={name:'resumedate',aliases:['startdate'],category:'dating',desc:'Resume matchmaking',usage:'†resumedate',privateOnly:true,async execute(s,m,a,c){return d.toggle(c,true);}};
