@@ -11,40 +11,61 @@ const clockString = ms => [Math.floor(ms/3600000),Math.floor(ms/60000)%60,Math.f
 
 async function sendCategoryMenu(sock, msg, ctx, catKey) {
     const s = ctx.settings;
-    catKey = catKey.toLowerCase(); // FIX CASE
+    catKey = catKey.toLowerCase();
     const m = CAT[catKey];
     if (!m) return ctx.reply(`❌ Unknown category: ${catKey}${s.FOOTER}`);
-
     const { getCategories } = require('../../lib/loader');
-    // FIX FILTER
     const cmds = (getCategories().get(catKey) || []).filter((c, i, arr) => arr.findIndex(x => x.name === c.name) === i).sort((a, b) => a.name.localeCompare(b.name));
     if (!cmds.length) return ctx.reply(`📭 No commands found in *${m.l}*.${s.FOOTER}`);
-
     const lines = cmds.map(c => `*${s.prefix}${c.name}* : ${c.desc || 'No description'}`);
     lines.push(``, `_Use ${s.prefix}help <cmd> for details_`);
-
     await sock.sendMessage(ctx.from, {
         text: menuBox(m.e, `${m.l.toUpperCase()} ᴄᴏᴍᴀɴᴅs`, lines) + s.FOOTER,
-        buttons: [{ buttonId: 'madara_back_menu', buttonText: { displayText: '⬅️ BACK TO MENU' }, type: 1 }], // FIXED ID
+        buttons: [{ buttonId: 'madara_back_menu', buttonText: { displayText: '⬅️ BACK TO MENU' }, type: 1 }],
         headerType: 1
     }, { quoted: msg });
 }
 
 function greeting() {
     const h = new Date().getHours();
-    if (h < 4) return 'ʜᴀᴘʏ ᴇᴀʀʟʏ ʜᴏᴜʀs ✨';
-    if (h < 10) return 'ɢᴏᴅ ᴍᴏʀɴɪɴɢ 🥱';
-    if (h < 15) return 'ɢᴏᴅ ᴀғᴛᴇʀɴᴏɴ 🫠';
-    if (h < 18) return 'ɢᴏᴅ ᴇᴠᴇɴɪɴɢ 🌇';
-    return 'ɢᴏᴅ ɴɪɢʜᴛ 🌙';
+    if (h < 4) return 'ʜᴀᴘᴘʏ ᴇᴀʀʟʏ ʜᴏᴜʀs ✨';
+    if (h < 10) return 'ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ 🥱';
+    if (h < 15) return 'ɢᴏᴏᴅ ᴀғᴛᴇʀɴᴏɴ 🫠';
+    if (h < 18) return 'ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌇';
+    return 'ɢᴏᴏᴅ ɴɪɢʜᴛ 🌙';
 }
 
 async function execute(sock, msg, args, ctx) {
+    // === DESIGN ENGINE - PER SESSION FIX ===
+    try{
+      const { PREF_FILE, render } = require('../../lib/menuEngine');
+      let pref={}; try{pref=JSON.parse(fs.readFileSync(PREF_FILE,'utf8'))}catch{}
+      let chatId = msg.chat || ctx.from;
+      let senderId = msg.key?.participant || msg.sender || ctx.sender || chatId;
+
+      // PER-SESSION: senderId first, then global default
+      let skin = pref[senderId] || pref['default'] || 'default';
+
+      console.log('[MENU DEBUG] senderId',senderId,'skin',skin);
+
+      if(skin!== 'default'){
+        try{
+          await render(sock,msg,args,skin,ctx);
+          return;
+        }catch(e){
+          console.log('[MENU DEBUG] render error',e);
+          await sock.sendMessage(chatId,{text:`❌ Design "${skin}" failed:\n${e.message}`});
+          return;
+        }
+      }
+    }catch(e){ console.log('skin outer error',e); }
+    // === END DESIGN ENGINE ===
+
     const s = ctx.settings; const prefix = s.prefix || '.'; const name = ctx.pushName || sc(s.ownerName);
     const uptime = clockString(process.uptime() * 1000); const now = new Date();
     const date = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }); const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-    const str = `❤️ *_ʜᴇʟᴏ ${name}, ${greeting()}!_* 🥳
+    const str = `❤️ *_ʜᴇʟʟᴏ ${name}, ${greeting()}!_* 🥳
 ╭═══〘 𝑴𝑨𝑫𝑨𝑹𝑨 𝑿-𝑴𝑫 〙═══⊷❍
 ┃✰│𝙽𝚊𝚖𝚎: ${sc(s.botName)}
 ┃✰│𝚃𝚘𝚝𝚊𝚕: 700+ ғᴇᴀᴛᴜʀᴇs
@@ -72,7 +93,7 @@ async function execute(sock, msg, args, ctx) {
         interactiveMessage: proto.Message.InteractiveMessage.create({
             body: proto.Message.InteractiveMessage.Body.create({ text: str }),
             footer: proto.Message.InteractiveMessage.Footer.create({ text: `© Powered by ${s.botName}` }),
-            header: proto.Message.InteractiveMessage.Header.create({ title: `${sc(s.botName)} x-md`, hasMediaAttachment:!!bannerImg, imageMessage: bannerImg?.imageMessage || undefined }),
+            header: proto.Message.InteractiveMessage.Header.create({ title: `${sc(s.botName)}`, hasMediaAttachment:!!bannerImg, imageMessage: bannerImg?.imageMessage || undefined }),
             nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
                 buttons: [
                     { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "⚙️ SYSTEM", id: "madara_cat_system" }) },
@@ -83,7 +104,6 @@ async function execute(sock, msg, args, ctx) {
         })
     }, { quoted: msg });
 
-    // MAGIC: UNLOCKS MIXED BUTTONS
     await sock.relayMessage(ctx.from, menuMsg.message, {
         messageId: menuMsg.key.id,
         additionalNodes: [{
