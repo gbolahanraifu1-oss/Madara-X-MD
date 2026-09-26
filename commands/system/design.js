@@ -25,7 +25,7 @@ module.exports = {
     const cur = pref[senderId] || pref['default'] || 'default';
 
     if (!args[0]) {
-      return await sock.sendMessage(chatId, { text: `*🎨 DESIGN*\nAvailable: ${available.join(', ')}\nYour: ${cur}\n\n.setmenu apex\n.setmenu default` });
+      return await sock.sendMessage(chatId, { text: `*🎨 MADARA DESIGNS*\nAvailable: ${available.join(', ')}\nYour: ${cur}\n\n.setmenu apex\n.setmenu neon\n.setmenu default` });
     }
 
     let raw = args[0].toLowerCase();
