@@ -3,8 +3,8 @@ name: Menu import scope
 description: Keep menu design imports separate from the bot's command library.
 ---
 
-When porting menu designs into Madara-X-MD, import only the menu presentation/rendering logic and wire it to the existing command/category loader. Do not copy, dump, or merge command implementations from the source bot. Only modify existing command files when needed to expose or select a menu design.
+Madara-X-MD is not a collaboration project: do not add another bot's command implementations, images, branding, or source-specific naming unless the user explicitly asks. When porting a menu design, import only the requested presentation/rendering logic and wire it to Madara's existing command/category loader; preserve Madara's own assets.
 
-**Why:** The project already has its own large command library, and mixing a source bot's commands into a menu-design port risks duplicated or unintended commands.
+**Why:** The user wants this bot's assets and identity kept distinct; importing another bot's content can imply an unwanted collaboration and add duplicate or unrelated commands.
 
-**How to apply:** Before syncing or pushing a menu port, compare command paths and contents against the pre-change branch; investigate any command additions beyond the menu selector before proceeding.
+**How to apply:** Before syncing or pushing a port, inspect asset names, image contents, references, and command paths. Exclude source-bot assets/naming and command implementations unless expressly requested; compare command paths with the pre-change branch.
