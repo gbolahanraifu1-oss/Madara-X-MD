@@ -1,0 +1,1 @@
+- [Menu import scope](menu-import-scope.md) — menu design ports must not copy or add command implementations.
