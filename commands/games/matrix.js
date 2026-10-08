@@ -2,7 +2,7 @@
 const { sendArcade } = require('../../utils/arcadeGames');
 module.exports = {
     name: 'matrix',
-    aliases: ['matrixgame', 'spaceshooter', 'matrixgame'],
+    aliases: ['matrixgame', 'spaceshooter'],
     description: 'Play Matrix, a neon space-shooter GenAI mini-game',
     category: 'games',
     async execute({ sock, msg, from, reply }) {
