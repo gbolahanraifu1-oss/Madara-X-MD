@@ -1,6 +1,6 @@
 'use strict';
 
-const { detectDevice } = require('./device');
+const { detectDevice } = require('../../utils/deviceInfo');
 const messageIndex = require('../../utils/messageIndex');
 
 const DEVICE_LABELS = {

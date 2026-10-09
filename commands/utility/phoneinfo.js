@@ -30,7 +30,7 @@
 
 'use strict';
 
-const { detectDevice } = require('./device');
+const { detectDevice } = require('../../utils/deviceInfo');
 
 // ─── Offline calling-code table (country + region name) ───────────────────
 // Sorted matching tries longest prefix first so e.g. +1 (US/CA) vs +1242

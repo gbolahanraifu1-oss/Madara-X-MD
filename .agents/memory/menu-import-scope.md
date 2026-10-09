@@ -7,4 +7,4 @@ Madara-X-MD is not a collaboration project: do not add another bot's command imp
 
 **Why:** The user wants this bot's assets and identity kept distinct; importing another bot's content can imply an unwanted collaboration and add duplicate or unrelated commands.
 
-**How to apply:** Before syncing or pushing a port, inspect asset names, image contents, references, and command paths. Exclude source-bot assets/naming and command implementations unless expressly requested; compare command paths with the pre-change branch.
+**How to apply:** Before syncing or pushing a port, inspect asset names, image contents, references, and command paths. Exclude source-bot assets/naming and command implementations unless expressly requested; compare command paths with the pre-change branch. Then load the command registry and check transitive imports: dynamically assembled module paths can evade plain-text name searches and deleting a duplicate command file can break helpers imported by other commands.

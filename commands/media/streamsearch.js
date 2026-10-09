@@ -1,11 +1,10 @@
 'use strict';
 
 const crypto = require('crypto');
-const google = require('./google');
+const sources = require('../../utils/googleSearchSources');
 const { generateWAMessageFromContent, proto } = require('@itsliaaa/baileys');
 const { escapeHtml, sendRichHtml } = require('../../utils/genaiRich');
 
-const sources = google._sources || {};
 const MAX_RESULTS = 8;
 const MAX_SNIPPET = 190;
 const DETAILS_TTL_MS = 10 * 60 * 1000;

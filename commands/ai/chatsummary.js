@@ -1,7 +1,7 @@
 'use strict';
 
 const memory = require('../../utils/madaraMemory');
-const madara = require('./madara');
+const madara = require('./pasqua');
 
 module.exports = {
     name: 'chatsummary',

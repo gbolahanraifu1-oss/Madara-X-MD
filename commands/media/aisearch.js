@@ -1,18 +1,13 @@
 /**
- * .aisearch <query> — web search rendered as the same GenAI rich card
- * mechanism as .insta's lookup chip (commands/media/instagram.js), instead
- * of .google's plain text+image reply.
+ * Web search rendered as a GenAI rich card rather than a plain text reply.
  *
- * Reuses .google's own data sources (DuckDuckGo instant answer + Wikipedia
- * summary — see commands/media/google.js's exported `_sources`) so results
- * stay consistent between the two commands; only the rendering differs.
+ * Uses the shared DuckDuckGo and Wikipedia sources while keeping the card
+ * presentation separate from the existing search command.
  */
 'use strict';
 
 const { generateWAMessageFromContent, proto } = require('@itsliaaa/baileys');
-const google = require('./google');
-
-const { ddg, wiki, ogImage } = google._sources;
+const { ddg, wiki, ogImage } = require('../../utils/googleSearchSources');
 
 function isHttpUrl(value) { return typeof value === 'string' && /^https?:\/\//i.test(value.trim()); }
 
