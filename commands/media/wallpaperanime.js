@@ -2,10 +2,8 @@
  * .wallpaperanime — sends 5 random anime wallpapers
  *
  * Providers (first success wins, per-image fallback if needed):
- *  1. prexzyapis.com/random/anime/wallmlnime — as given. Response
- *     shape was never confirmed live (test request 500'd with no visible
- *     body), so parsed defensively. Called 5x in case it returns one
- *     image per call, with a check in case it returns several at once.
+ *  1. Prexzy's documented /random/anhsfw endpoint. Called repeatedly in case
+ *     it returns one image per call, with a check for batch responses.
  *  2. Pollinations.ai (flux model, random anime wallpaper prompts) —
  *     confirmed working, no API key. Tops up to 5 if provider 1 falls short.
  */
@@ -21,9 +19,9 @@ const FALLBACK_PROMPTS = [
     'anime mountain scenery, studio ghibli style, peaceful wallpaper',
 ];
 
-async function tryPrexzyvillaWallpaper() {
+async function tryPrexzyWallpaper() {
     try {
-        const { data } = await axios.get('https://prexzyapis.com/random/anime/wallmlnime', {
+        const { data } = await axios.get('https://prexzyapis.com/random/anhsfw', {
             timeout: 30000,
             validateStatus: () => true,
         });
@@ -32,7 +30,7 @@ async function tryPrexzyvillaWallpaper() {
         if (!urls.length) return null;
         return urls;
     } catch (e) {
-        console.error('[wallpaperanime] prexzyvilla failed:', e.message);
+        console.error('[wallpaperanime] Prexzy failed:', e.message);
         return null;
     }
 }
@@ -92,7 +90,7 @@ module.exports = {
             // have 5 unique images or it stops returning new ones.
             const seenUrls = new Set();
             for (let attempt = 0; attempt < 5 && buffers.length < 5; attempt++) {
-                const urls = await tryPrexzyvillaWallpaper();
+                const urls = await tryPrexzyWallpaper();
                 if (!urls || !urls.length) break;
                 for (const url of urls) {
                     if (buffers.length >= 5 || seenUrls.has(url)) continue;

@@ -242,7 +242,7 @@ function prexzyDownloadUrls(payload) {
 async function resolvePrexzyUrls(pageUrl) {
     if (!pageUrl) return [];
     try {
-        const res = await axios.get('https://prexzyapis.com/download/tik', {
+        const res = await axios.get('https://prexzyapis.com/download/tiktok', {
             params: { url: pageUrl },
             timeout: 30000,
             validateStatus: () => true,

@@ -147,10 +147,10 @@ const strategies = [
         if (!video) throw new Error('agatz: no video url');
         return { video, ...pickMeta(data) };
     },
-    // Strategy 4: prexzyapis (original provider — kept as a further fallback)
+    // Strategy 4: Prexzy's documented YouTube MP4 downloader.
     async (url) => {
         const { data } = await axios.get(
-            `https://prexzyapis.com/download/youtube-video?url=${encodeURIComponent(url)}`,
+            `https://prexzyapis.com/download/ytmp4?url=${encodeURIComponent(url)}`,
             { timeout: 45000 }
         );
         const video = pickVideoUrl(data);

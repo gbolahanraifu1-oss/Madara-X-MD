@@ -1,5 +1,5 @@
 /**
- * TTS helper — uses the same provider as the text AI (apis.prexzyvilla.site).
+ * TTS helper — uses Prexzy APIs for English speech generation.
  * Returns proper ENGLISH voices (the previous Gemini-TTS endpoint only
  * rendered foreign-language audio reliably).
  *
@@ -16,7 +16,7 @@
 const axios = require('axios');
 const { spawn } = require('child_process');
 
-const BASE = 'https://apis.prexzyvilla.site';
+const BASE = 'https://prexzyapis.com';
 
 // Primary voice per character + a couple of English fallbacks.
 const VOICE_MAP = {

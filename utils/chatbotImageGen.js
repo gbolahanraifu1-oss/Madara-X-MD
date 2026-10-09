@@ -1,12 +1,13 @@
 /**
  * chatbotImageGen — shared helper used by the DM chatbot and the group chatbot
  * to detect image-generation intent in a user's message and (if matched) send
- * a generated image. Uses the same prexzyvilla APIs as commands/ai/generate.js.
+ * a generated image through Prexzy's documented image-generation endpoints.
  */
 const axios = require('axios');
+const { extractImageUrls } = require('./prexzyShape');
 
-const PRIMARY  = 'https://apis.prexzyvilla.site/ai/dalle';
-const FALLBACK = 'https://apis.prexzyvilla.site/ai/realistic';
+const PRIMARY  = 'https://prexzyapis.com/ai/genimage';
+const FALLBACK = 'https://prexzyapis.com/ai/genigpt';
 
 // Match common "make me an image" style phrasings and capture the subject.
 const TRIGGERS = [
@@ -30,23 +31,20 @@ function detectImagePrompt(text) {
 
 async function _fetchImageUrl(endpoint, prompt) {
     try {
-        const { data } = await axios.get(endpoint, { params: { prompt }, timeout: 60000 });
-        if (!data || data.status !== true) return null;
-        const arr = data.image_url || data.images || data.result;
-        if (Array.isArray(arr) && arr.length) {
-            const first = arr[0];
-            return first?.image?.url || first?.url || (typeof first === 'string' ? first : null);
-        }
-        if (typeof data.result === 'string') return data.result;
-        if (typeof data.url === 'string') return data.url;
-        return null;
+        const { data, status } = await axios.get(endpoint, {
+            params: { prompt, width: 768, height: 768 },
+            timeout: 60000,
+            validateStatus: () => true,
+        });
+        if (status < 200 || status >= 300 || data?.status === false) return null;
+        return extractImageUrls(data, 1)[0] || null;
     } catch (_) { return null; }
 }
 
 async function generateImageBuffer(prompt) {
     let url = await _fetchImageUrl(PRIMARY, prompt);
-    let model = 'DALL·E 3 XL';
-    if (!url) { url = await _fetchImageUrl(FALLBACK, prompt); model = 'Realistic'; }
+    let model = 'Prexzy GenImage';
+    if (!url) { url = await _fetchImageUrl(FALLBACK, prompt); model = 'Prexzy GeniGPT'; }
     if (!url) return null;
     try {
         const r = await axios.get(url, { responseType: 'arraybuffer', timeout: 60000 });

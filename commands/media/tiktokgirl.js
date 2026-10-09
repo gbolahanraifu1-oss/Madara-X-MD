@@ -71,12 +71,12 @@ function rankUrls(urls) {
 /** Provider chain — each returns { urls: string[], pageUrl?: string }. */
 const PROVIDERS = [
     {
-        name: 'prexzyvilla',
+        name: 'prexzyapis',
         async fetch() {
             const r = await axios.get('https://prexzyapis.com/random/tiktokgirl', {
                 timeout: 20000, headers: { 'User-Agent': UA }, validateStatus: () => true,
             });
-            if (r.status >= 400) throw new Error('prexzyvilla ' + r.status);
+            if (r.status >= 400) throw new Error('prexzyapis ' + r.status);
             return { urls: collectUrls(r.data), pageUrl: r.data?.webVideoUrl || r.data?.share_url };
         },
     },

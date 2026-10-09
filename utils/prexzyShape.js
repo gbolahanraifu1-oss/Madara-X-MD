@@ -1,7 +1,6 @@
 /**
- * prexzyShape.js — defensive response parsing for apis.prexzyvilla.site
- * endpoints whose exact JSON shape could not be confirmed live (every
- * test request returned 400/500 with no visible body during development).
+ * prexzyShape.js — defensive response parsing for Prexzy API media responses
+ * whose result fields can vary between endpoints.
  *
  * These helpers walk the response looking for whatever shape is actually
  * there, following the same convention already used elsewhere in this

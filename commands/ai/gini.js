@@ -16,9 +16,17 @@ module.exports = {
         }
 
         try {
-            const res = await axios.get(`https://apis.prexzyvilla.site/ai/aichat?prompt=${encodeURIComponent(prompt)}`);
+            const res = await axios.get('https://prexzyapis.com/ai/ch', {
+                params: { q: prompt },
+                timeout: 15000,
+                validateStatus: () => true,
+            });
+            if (res.status < 200 || res.status >= 300 || res.data?.status === false) {
+                throw new Error(`Prexzy returned HTTP ${res.status}`);
+            }
             const data = res.data;
-            const text = data.reply || data.response || data.result || '...';
+            const text = data.response || data.result || data.reply;
+            if (!text) throw new Error('Prexzy returned no response text');
 
             reply(text);
         } catch (err) {

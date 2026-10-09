@@ -5,8 +5,7 @@
  * 
  * STAGES:
  * 1. Replicate (User's Key)
- * 2. Prexzy API (Async Polling)
- * 2.5. FAL.AI (Wan v2.7 - NEW FALLBACK)
+ * 2. FAL.AI (Wan v2.7)
  * 3. Public API Fallbacks (Sync)
  * 4. Google Veo (Gemini API - Last Resort)
  */
@@ -84,40 +83,9 @@ module.exports = {
                 }
             }
 
-            // --- STAGE 2: PREXZY API (Async Polling) ---
-            if (!videoUrl) {
-                try {
-                    console.log(`[aiartvideo] Trying Prexzy API...`);
-                    const submitRes = await axios.get(`https://prexzyapis.com/ai/aiart-video?prompt=${encodeURIComponent(prompt)}&engine=wan2_2`, { timeout: 20000 });
-                    const submitData = submitRes.data;
-
-                    if (submitData.status && submitData.task_id) {
-                        const taskId = submitData.task_id;
-                        const deviceId = submitData.device_id;
-                        let pollAttempts = 0;
-                        
-                        while (pollAttempts < 40) {
-                            await new Promise(r => setTimeout(r, 5000));
-                            const statusRes = await axios.get(`https://prexzyapis.com/ai/aiart-video-status?task_id=${taskId}&device_id=${deviceId}`, { timeout: 15000 });
-                            const statusData = statusRes.data;
-
-                            if (statusData.status && (statusData.state === 'completed' || statusData.video_url)) {
-                                videoUrl = statusData.video_url;
-                                usedModel = 'Prexzy (Wan 2.2)';
-                                break;
-                            } else if (statusData.state === 'failed') {
-                                break;
-                            }
-                            pollAttempts++;
-                        }
-                    }
-                } catch (e) {
-                    console.error(`[aiartvideo] Prexzy API failed:`, e.message);
-                }
-            }
-
-            // --- STAGE 2.5: FAL.AI (Dual Endpoints - IMMEDIATE FALLBACK) ---
-            // Tries both Wan v2.7 and v2.2-a14b without wasting time if Replicate & Prexzy fail
+            // --- STAGE 2: FAL.AI (Dual Endpoints) ---
+            // Prexzy currently documents image generation, not video generation.
+            // Tries both Wan endpoints without waiting on an unpublished route.
             if (!videoUrl) {
                 for (const endpoint of FAL_AI_ENDPOINTS) {
                     if (videoUrl) break; // Exit if we already got a video
@@ -212,7 +180,7 @@ module.exports = {
             }
 
             // --- STAGE 4: GOOGLE VEO (Gemini API — fallback of last resort) ---
-            // Kicks in only if Replicate, Prexzy, both FAL.AI endpoints, and the public fallbacks all failed.
+            // Kicks in only if Replicate, both FAL.AI endpoints, and the public fallbacks all failed.
             if (!videoUrl && !videoBuffer) {
                 try {
                     console.log(`[aiartvideo] Trying Google Veo (Gemini API)...`);
@@ -268,7 +236,7 @@ module.exports = {
             // --- FINAL DELIVERY ---
             if (!videoUrl && !videoBuffer) {
                 await sock.sendMessage(from, { react: { text: '❌', key: msg.key } });
-                return reply('❌ *ERROR:* All video generation engines (Replicate, Prexzy, FAL.AI, Public, and Google Veo) are currently unavailable.\n\nPossible reasons:\n1. Prompt violates safety filters.\n2. API limits reached.\n3. Servers are down.');
+                return reply('❌ *ERROR:* All video generation engines (Replicate, FAL.AI, Public, and Google Veo) are currently unavailable.\n\nPossible reasons:\n1. Prompt violates safety filters.\n2. API limits reached.\n3. Servers are down.');
             }
 
             await sock.sendMessage(from, {

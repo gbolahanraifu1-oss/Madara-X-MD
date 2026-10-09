@@ -1,5 +1,5 @@
 /**
- * .match — Live football matches via prexzyvilla Sports API
+ * .match — Live football matches via Prexzy Sports API
  * Usage: .match            -> list current/recent matches
  *        .match arsenal    -> filter by team / league / country
  */

@@ -1,5 +1,5 @@
 /**
- * .ss — Website screenshot via prexzyvilla webss API
+ * .ss — Website screenshot via Prexzy's webss API
  * Usage: .ss https://example.com
  */
 
