@@ -29,6 +29,17 @@ async function tryWithRetry(fn, times = 3) {
     throw last;
 }
 
+function getPrexzyAudioUrl(data) {
+    const values = [
+        data?.audio_url, data?.audioUrl, data?.download_url, data?.downloadUrl, data?.url,
+        data?.data?.audio_url, data?.data?.audioUrl, data?.data?.download_url, data?.data?.downloadUrl, data?.data?.url,
+        data?.data?.audio?.url, data?.data?.download?.url,
+        data?.result?.audio_url, data?.result?.audioUrl, data?.result?.download_url,
+        data?.result?.downloadUrl, data?.result?.url, data?.result?.download?.url,
+    ];
+    return values.find(value => typeof value === 'string' && /^https?:\/\//i.test(value)) || null;
+}
+
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 async function getFollowingRedirects(url, options = {}, maxRedirects = 5) {
@@ -57,6 +68,7 @@ async function getFollowingRedirects(url, options = {}, maxRedirects = 5) {
 async function getAudioUrl(videoUrl) {
     const enc  = encodeURIComponent(videoUrl);
     const apis = [
+        { name: 'Prexzy', url: `https://prexzyapis.com/download/ytmp3?url=${enc}`, get: getPrexzyAudioUrl },
         { name: 'EliteProTech', url: `https://eliteprotech-apis.zone.id/ytdown?url=${enc}&format=mp3`,      get: d => d?.downloadURL || d?.download_url },
         { name: 'Yupra',        url: `https://api.yupra.my.id/api/downloader/ytmp3?url=${enc}`,              get: d => d?.data?.download_url },
         { name: 'Okatsu',       url: `https://okatsu-rolezapiiz.vercel.app/downloader/ytmp3?url=${enc}`,     get: d => d?.dl },
