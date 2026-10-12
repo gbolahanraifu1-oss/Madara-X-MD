@@ -17,7 +17,7 @@ async function sendCategoryMenu(sock, msg, ctx, catKey) {
     const { getCategories } = require('../../lib/loader');
     const cmds = (getCategories().get(catKey) || []).filter((c, i, arr) => arr.findIndex(x => x.name === c.name) === i).sort((a, b) => a.name.localeCompare(b.name));
     if (!cmds.length) return ctx.reply(`📭 No commands found in *${m.l}*.${s.FOOTER}`);
-    const lines = cmds.map(c => `*${s.prefix}${c.name}* : ${c.desc || 'No description'}`);
+    const lines = cmds.map(c => `${s.prefix || '.'}${c.name}`);
     lines.push(``, `_Use ${s.prefix}help <cmd> for details_`);
     await sock.sendMessage(ctx.from, {
         text: menuBox(m.e, `${m.l.toUpperCase()} ᴄᴏᴍᴀɴᴅs`, lines) + s.FOOTER,
