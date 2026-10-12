@@ -10,12 +10,12 @@ const settings = {
     // Custom code used by the Telegram/standalone pairing flow.
     // The web pairing API intentionally uses WhatsApp's normal code.
     pairingCode:     process.env.PAIRING_CODE      || 'MADARAMD',
-    version:         '1.2.0 𝙱𝙴𝚃𝙰',
+    version:         '1.3.0 𝙱𝙴𝚃𝙰',
     prefix:          process.env.PREFIX            || '.',
     prefixes:        (process.env.PREFIXES || '.,!,#,/').split(','),
     noPrefixMode:    process.env.NO_PREFIX_MODE === 'true' || false,
     ownerNumber:     process.env.OWNER_NUMBER      || '2347062301699',
-    ownerName:       process.env.OWNER_NAME        || 'ɢʙᴇxᴄʜᴀɴɢᴇ       ᴍᴀᴅᴀʀᴀ x-ᴍᴅ | ɪɴᴄ.',
+    ownerName:       process.env.OWNER_NAME        || '𝙼𝙰𝙳𝙰𝚁𝙰𝐃𝐄𝐕',
 
     // Vendor number for the Files Shop paid-order system.
     // All paid-file orders (Track ID notifications) are sent here.
