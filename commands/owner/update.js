@@ -7,7 +7,7 @@
  *   .update force    → discard local changes, hard reset to origin/main
  *   .update restart  → run .update then exit (panel/PM2 auto-restarts)
  *
- * Repo: https://github.com/madarawisdom2007-beep/MADARA_MD.git
+ * Repo: https://github.com/gbolahanraifu1-oss/Madara-X-MD.git
  *
  * Safe by design:
  *   - Owner-only via category gate (sessionManager enforces).
@@ -30,10 +30,10 @@ const execAsync     = promisify(exec);
 
 const commandLoader = require('../../utils/commandLoader');
 
-const REPO_URL      = 'https://github.com/madarawisdom2007-beep/MADARA_MD.git';
-const REPO_OWNER    = 'madarawisdom2007-beep';
-const REPO_NAME     = 'MADARA_MD';
-const REPO_BRANCH   = 'main';
+const REPO_URL      = 'https://github.com/gbolahanraifu1-oss/Madara-X-MD. git';
+const REPO_OWNER    = '𝙼𝙰𝙳𝙰𝚁𝙰𝐃𝐄𝐕';
+const REPO_NAME     = 'MADARA X-MD';
+const REPO_BRANCH   = 'legacy-before-v1.2';
 const TARBALL_URL   = `https://codeload.github.com/${REPO_OWNER}/${REPO_NAME}/tar.gz/refs/heads/${REPO_BRANCH}`;
 
 const REPO_ROOT     = path.resolve(__dirname, '..', '..');
