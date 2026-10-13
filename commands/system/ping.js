@@ -38,7 +38,7 @@ module.exports = {
                     thumbnailUrl:          '',
                     sourceUrl:             s.newsletterJid ? `https://whatsapp.com/channel/${s.newsletterJid}` : 'https://github.com',
                     mediaType:             1,
-                    renderLargerThumbnail: true,
+                    renderLargerThumbnail: false,
                 },
                 ...channelCtx,
             },
