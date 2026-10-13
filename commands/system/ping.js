@@ -1,4 +1,6 @@
 'use strict';
+const fs = require('fs');
+const path = require('path');
 
 module.exports = {
     name:      'ping',
@@ -23,9 +25,17 @@ module.exports = {
             },
         } : {};
 
-        // Single voice-note board — speed result baked straight into the card
+        // --- READ THUMBNAIL FROM MEDIA DIR ---
+        const mediaDir = path.join(process.cwd(), 'media');
+        let thumbBuffer = null;
+        // try common names
+        for (const name of ['thumb.jpg', 'thumbnail.jpg', 'madara.jpg', 'menu.jpg', 'alive.jpg']) {
+            const p = path.join(mediaDir, name);
+            if (fs.existsSync(p)) { thumbBuffer = fs.readFileSync(p); break; }
+        }
+
         await sock.sendMessage(ctx.from, {
-            audio: await require('../../lib/toAudio').toPTT(require('fs').readFileSync(require('path').join(process.cwd(), 'media/alive.mp3')), 'mp3'),
+            audio: await require('../../lib/toAudio').toPTT(fs.readFileSync(path.join(mediaDir, 'alive.mp3')), 'mp3'),
             mimetype: 'audio/ogg; codecs=opus',
             ptt:      true,
             waveform: [100, 50, 80, 30, 100, 60, 40, 90, 70],
@@ -33,12 +43,13 @@ module.exports = {
             contextInfo: {
                 mentionedJid: [msg.key.participant || msg.key.remoteJid],
                 externalAdReply: {
-                    title:                 `${s.botName} sᴘᴇᴇᴅ: ${rtt}ᴍs 🎯`,
-                    body:                  'ʀᴇsᴘᴏɴsᴇ ᴛɪᴍᴇ ᴍᴇᴀsᴜʀᴇᴅ',
-                    thumbnailUrl:          '',
-                    sourceUrl:             s.newsletterJid ? `https://whatsapp.com/channel/${s.newsletterJid}` : 'https://github.com',
-                    mediaType:             1,
-                    renderLargerThumbnail: true,
+                    title: `${s.botName} sᴘᴇᴇᴅ: ${rtt}ᴍs 🎯`,
+                    body: 'ʀᴇsᴘᴏɴsᴇ ᴛɪᴍᴇ ᴍᴇᴀsᴜʀᴇᴅ',
+                    thumbnail: thumbBuffer, // <- now reads media dir
+                    sourceUrl: s.newsletterJid ? `https://whatsapp.com/channel/${s.newsletterJid}` : 'https://github.com',
+                    mediaType: 2, // 2 = big card, 1 = small side icon
+                    renderLargerThumbnail: false,
+                    showAdAttribution: true,
                 },
                 ...channelCtx,
             },
