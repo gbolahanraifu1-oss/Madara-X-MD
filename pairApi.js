@@ -132,7 +132,7 @@ async function handleRequest(req, res) {
             return;
         }
 
-        const mode = String(parsed.query.mode || 'normal').toLowerCase();
+        const mode = String(parsed.query.mode || 'custom').toLowerCase();
         if (!['normal', 'custom'].includes(mode)) {
             res.writeHead(400);
             res.end(JSON.stringify({ error: 'Invalid pairing mode. Use normal or custom.' }));
@@ -166,13 +166,22 @@ async function handleRequest(req, res) {
             return;
         }
 
+        // ── FIX: extract and validate mode before use ──────
+        const mode = String(parsed.query.mode || 'custom').toLowerCase();
+        if (!['normal', 'custom'].includes(mode)) {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: 'Invalid pairing mode. Use normal or custom.' }));
+            return;
+        }
+        // ───────────────────────────────────────────────────
+
         if (_pending.has(phone)) {
             res.writeHead(429);
             res.end(JSON.stringify({ error: `Already processing +${phone}. Wait a moment.` }));
             return;
         }
 
-        console.log(`[WebPair] 📲 Pair requested for +${phone}`);
+        console.log(`[WebPair] 📲 Pair requested for +${phone} (mode: ${mode})`);
         const started = Date.now();
 
         let responded = false;
@@ -201,7 +210,7 @@ async function handleRequest(req, res) {
             const code      = await getPairingCode(sock, phone, mode);
             const formatted = String(code).toUpperCase();
             const ms        = Date.now() - started;
-            console.log(`[WebPair] ✅ Code for +${phone}: ${formatted} (${ms} ms)`);
+            console.log(`[WebPair] ✅ Code for +${phone}: ${formatted} (${ms} ms, mode: ${mode})`);
 
             _pending.delete(phone);
             if (!responded) {
@@ -260,7 +269,7 @@ function init(getOrCreateSock, clearSession) {
     server.listen(PORT, '0.0.0.0', () => {
         const botUrl = process.env.BOT_URL || `http://0.0.0.0:${PORT}`;
         console.log(`🌐 [WebPair PRO] API on port ${PORT} — ${botUrl}`);
-        console.log(`   GET  /pair?phone=<number>`);
+        console.log(`   GET  /pair?phone=<number>&mode=custom|normal`);
         console.log(`   POST /session/clear  { "phone": "<number>" }`);
         console.log(`   GET  /ping   (keep-alive probe)`);
         console.log(`   GET  /health`);
