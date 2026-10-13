@@ -30,7 +30,7 @@ const execAsync     = promisify(exec);
 
 const commandLoader = require('../../utils/commandLoader');
 
-const REPO_URL      = 'https://github.com/gbolahanraifu1-oss/Madara-X-MD. git';
+const REPO_URL      = 'https://github.com/gbolahanraifu1-oss/Madara-X-MD.git';
 const REPO_OWNER    = '𝙼𝙰𝙳𝙰𝚁𝙰𝐃𝐄𝐕';
 const REPO_NAME     = 'MADARA X-MD';
 const REPO_BRANCH   = 'legacy-before-v1.2';
