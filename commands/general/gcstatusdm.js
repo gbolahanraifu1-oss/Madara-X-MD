@@ -15,7 +15,7 @@
 
 'use strict';
 
-const gcstatus = require('./gcstatus');
+const gcstatus = require('../../utils/gcstatusHelpers');
 const {
     downloadMedia,
     fetchLinkPreview,

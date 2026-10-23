@@ -29,14 +29,14 @@
 // Small gap between each group post so we don't hammer WhatsApp / trip anti-spam.
 const DELAY_BETWEEN_GROUPS_MS = 1200;
 
-// Lazily require gcstatus.js's helpers INSIDE execute() rather than at the
+// Lazily require the shared group-status helpers INSIDE execute() rather than at the
 // top of the file. If this require ever fails (wrong path, missing baileys
 // package, etc.), a top-level require would throw during command loading —
 // the whole command silently disappears from the bot with zero error shown
 // anywhere. Deferring it here means the command always registers, and if
 // something is broken you get a clear error message instead of dead silence.
 function loadGcstatus() {
-    const gcstatus = require('../general/gcstatus');
+    const gcstatus = require('../../utils/gcstatusHelpers');
     const {
         downloadMedia,
         fetchLinkPreview,
