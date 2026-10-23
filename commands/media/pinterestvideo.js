@@ -1,4 +1,4 @@
-const axios = require('axios');
+const pinterest = require('../../lib/pinterestApi');
 module.exports = {
     name: 'pinterestvideo',
     aliases: ['pinvid','pinterestv'],
@@ -11,17 +11,12 @@ module.exports = {
         if (!url) return ctx.reply(`❌ Provide a Pinterest URL.\nUsage: \`${s.prefix}pinterestvideo [url]\`${s.FOOTER}`);
         await ctx.react('⏳');
         try {
-            const res  = await axios.get(`https://api.siputzx.my.id/api/d/pinterest?url=${encodeURIComponent(url)}`);
-            const data = res.data?.data || res.data;
-            const link = data?.url || data?.video || data?.audio || data?.download;
-            if (!link) throw new Error('No download link found');
-            const media = await axios.get(link, { responseType: 'arraybuffer' });
-            const buf   = Buffer.from(media.data);
-            if (false) {
-                await sock.sendMessage(ctx.from, { audio: buf, mimetype: 'audio/mp4', ptt: false }, { quoted: msg });
-            } else {
-                await sock.sendMessage(ctx.from, { video: buf, caption: `🎬 Downloaded from Pinterest${s.FOOTER}` }, { quoted: msg });
-            }
-        } catch (e) { ctx.reply(`❌ Download failed: ${e.message}${s.FOOTER}`); }
+            const pin = await pinterest.getPinterestPin(url);
+            if (!pin.videoUrl) throw new Error('That pin has no progressive MP4 video to download.');
+            await sock.sendMessage(ctx.from, {
+                video: { url: pin.videoUrl },
+                caption: `🎬 ${pin.title}\n${pin.url}${s.FOOTER}`,
+            }, { quoted: msg });
+        } catch (e) { return ctx.reply(`❌ Download failed: ${e.message}${s.FOOTER}`); }
     }
 };

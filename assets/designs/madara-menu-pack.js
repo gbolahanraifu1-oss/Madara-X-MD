@@ -1,6 +1,5 @@
 'use strict';
 
-const { getCategories } = require('../../lib/loader');
 const settings = require('../../settings');
 
 // Ported from the linked menu design library. The excluded source-only
@@ -49,8 +48,8 @@ function clean(value) {
     return String(value || '').replace(/\r?\n/g, ' ').trim();
 }
 
-function getData(ctx) {
-    const categories = getCategories();
+function getData(ctx, categoryMap) {
+    const categories = categoryMap || require('../../lib/loader').getCategories();
     const prefix = ctx.settings?.prefix || settings.prefix || '.';
     const entries = [...categories.entries()]
         .filter(([, commands]) => commands?.length)
@@ -96,13 +95,71 @@ function buildCaption(key, ctx) {
     return lines.join('\n');
 }
 
-async function renderDesign(key, sock, msg, args, skinId, ctx) {
-    const caption = buildCaption(key, ctx) + (ctx.settings?.FOOTER || settings.FOOTER || '');
-    await sock.sendMessage(ctx.from, {
-        text: caption,
-        buttons: [{ buttonId: 'madara_back_menu', buttonText: { displayText: '⬅️ BACK TO MENU' }, type: 1 }],
-        headerType: 1,
-    }, { quoted: msg });
+function buildCaptionPages(key, ctx, limit = 3000, categoryMap) {
+    const style = STYLES[key] || STYLES.nor;
+    const d = getData(ctx, categoryMap);
+    const header = [
+        style.top,
+        `        ✦ ${style.title} ✦`,
+        style.bottom,
+        `${style.item} User    : ${d.user}`,
+        `${style.item} Owner   : ${d.owner}`,
+        `${style.item} Mode    : ${d.mode}`,
+        `${style.item} Plugins : ${d.total}`,
+        `${style.item} Prefix  : ${d.prefix}`,
+        `${style.item} Version : ${d.version}`,
+        '',
+    ];
+    const footer = [style.bottom, `✦ ${d.total} MADARA commands online ✦`];
+    const body = [];
+
+    for (const [category, commands] of d.entries) {
+        const label = String(category || 'misc').toUpperCase();
+        body.push(`${style.section} ${label} · ${commands.length} ${style.end}`);
+        for (const command of commands) body.push(`${style.item} ${d.prefix}${command.name}`);
+        body.push('');
+    }
+
+    const target = Math.max(1000, limit - 500);
+    const chunks = [];
+    let current = [];
+    let size = 0;
+    for (const line of body) {
+        const nextSize = size + line.length + 1;
+        if (current.length && nextSize > target) {
+            chunks.push(current);
+            current = [];
+            size = 0;
+        }
+        current.push(line);
+        size += line.length + 1;
+    }
+    if (current.length || chunks.length === 0) chunks.push(current);
+
+    return chunks.map((chunk, index) => {
+        const pageHeader = [...header];
+        if (chunks.length > 1) pageHeader[1] += ` · PAGE ${index + 1}/${chunks.length}`;
+        const pageLines = [
+            ...pageHeader,
+            ...chunk,
+            ...(index === chunks.length - 1 ? footer : [`_${style.title} · CONTINUED_`]),
+        ];
+        return pageLines.join('\n');
+    });
 }
 
-module.exports = { DESIGNS, buildCaption, renderDesign };
+async function renderDesign(key, sock, msg, args, skinId, ctx) {
+    const pages = buildCaptionPages(key, ctx);
+    const footer = ctx.settings?.FOOTER || settings.FOOTER || '';
+    for (let index = 0; index < pages.length; index++) {
+        const isLast = index === pages.length - 1;
+        const options = index === 0 && msg ? { quoted: msg } : {};
+        await sock.sendMessage(ctx.from, {
+            text: pages[index] + (isLast ? footer : ''),
+            buttons: [{ buttonId: 'madara_back_menu', buttonText: { displayText: '⬅️ BACK TO MENU' }, type: 1 }],
+            headerType: 1,
+        }, options);
+    }
+}
+
+module.exports = { DESIGNS, buildCaption, buildCaptionPages, renderDesign };

@@ -7,7 +7,7 @@ module.exports = {
     groupOnly: true, adminOnly: true, botAdminNeeded: true,
     async execute(sock, msg, args, ctx) {
         const s = ctx.settings;
-        const mentions = [...(ctx._interactiveMentions || []), ...ctx.getMentions()];
+        const mentions = ctx.getMentions();
         const quoted = ctx.quoted;
         let targets = [...mentions];
         if (!targets.length && quoted) {

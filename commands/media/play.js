@@ -9,7 +9,7 @@ const TMP = path.join(process.cwd(), 'temp');
 if (!fs.existsSync(TMP)) fs.mkdirSync(TMP, { recursive: true });
 
 const AX = {
-    timeout: 60000,
+    timeout: 15000,
     headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/json, text/plain, */*'
@@ -21,10 +21,10 @@ function sc(str) {
     return String(str).toLowerCase().split('').map(c => m[c]||c).join('');
 }
 
-async function tryWithRetry(fn, times = 3) {
+async function tryWithRetry(fn, times = 2) {
     let last;
     for (let i = 1; i <= times; i++) {
-        try { return await fn(); } catch (e) { last = e; if (i < times) await new Promise(r => setTimeout(r, 1000 * i)); }
+        try { return await fn(); } catch (e) { last = e; if (i < times) await new Promise(r => setTimeout(r, 500)); }
     }
     throw last;
 }
@@ -69,20 +69,10 @@ async function getAudioUrl(videoUrl) {
     const enc  = encodeURIComponent(videoUrl);
     const apis = [
         { name: 'Prexzy', url: `https://prexzyapis.com/download/ytmp3?url=${enc}`, get: getPrexzyAudioUrl },
-        { name: 'EliteProTech', url: `https://eliteprotech-apis.zone.id/ytdown?url=${enc}&format=mp3`,      get: d => d?.downloadURL || d?.download_url },
-        { name: 'Yupra',        url: `https://api.yupra.my.id/api/downloader/ytmp3?url=${enc}`,              get: d => d?.data?.download_url },
-        { name: 'Okatsu',       url: `https://okatsu-rolezapiiz.vercel.app/downloader/ytmp3?url=${enc}`,     get: d => d?.dl },
-        { name: 'GiftedTech',   url: `https://api.giftedtech.web.id/api/download/ytmp3?apikey=gifted&url=${enc}`, get: d => d?.result?.dl_url || d?.result?.download_url || d?.result?.url },
-        { name: 'GiftedMY',     url: `https://api.giftedtech.my.id/api/download/ytmp3?apikey=gifted&url=${enc}`,  get: d => d?.result?.dl_url || d?.result?.url },
-        { name: 'Siputzx',      url: `https://api.siputzx.my.id/api/d/ytmp3?url=${enc}`,                    get: d => d?.data?.url || d?.data?.download },
-        { name: 'RyzenDesu',    url: `https://api.ryzendesu.vip/api/downloader/ytmp3?url=${enc}`,            get: d => d?.url || d?.data?.url },
-        { name: 'VreidenTech',  url: `https://vreden.dimensionx.web.id/api/ytmp3?url=${enc}`,               get: d => d?.result?.download?.url || d?.result?.url },
-        { name: 'NekoLabs',     url: `https://api.nekolabs.my.id/downloader/youtube/audio?url=${enc}`,      get: d => d?.result?.downloadUrl || d?.result?.url },
-        { name: 'Itzpire',      url: `https://itzpire.com/download/youtube/audio?url=${enc}`,               get: d => d?.data?.url || d?.result?.url },
     ];
     for (const api of apis) {
         try {
-            const { data } = await tryWithRetry(() => getFollowingRedirects(api.url, AX));
+            const { data } = await tryWithRetry(() => getFollowingRedirects(api.url, AX), 2);
             const url = api.get(data);
             if (url?.startsWith('http')) { console.log('[play] via', api.name); return url; }
         } catch (e) {
@@ -94,22 +84,23 @@ async function getAudioUrl(videoUrl) {
 }
 
 async function downloadBuffer(url) {
-    // Try arraybuffer first, then stream
+    const MAX_AUDIO_BYTES = 50 * 1024 * 1024;
     try {
         const r = await getFollowingRedirects(url, {
             responseType: 'arraybuffer', timeout: 90000,
-            maxContentLength: Infinity, maxBodyLength: Infinity,
+            maxContentLength: MAX_AUDIO_BYTES, maxBodyLength: MAX_AUDIO_BYTES,
             headers: { 'User-Agent': AX.headers['User-Agent'], 'Accept': '*/*', 'Accept-Encoding': 'identity' }
         });
         const contentType = String(r.headers?.['content-type'] || '').toLowerCase();
         const buf = Buffer.from(r.data);
-        if (buf.length > 1000 && !/text\/(?:html|plain)|application\/(?:json|html)/i.test(contentType)) return buf;
+        if (buf.length > 1000 && buf.length <= MAX_AUDIO_BYTES &&
+            !/text\/(?:html|plain)|application\/(?:json|html)/i.test(contentType)) return buf;
     } catch {}
 
     // Stream fallback
     const r = await getFollowingRedirects(url, {
         responseType: 'stream', timeout: 90000,
-        maxContentLength: Infinity, maxBodyLength: Infinity,
+        maxContentLength: MAX_AUDIO_BYTES, maxBodyLength: MAX_AUDIO_BYTES,
         headers: { 'User-Agent': AX.headers['User-Agent'], 'Accept': '*/*', 'Accept-Encoding': 'identity' }
     });
     const streamType = String(r.headers?.['content-type'] || '').toLowerCase();
@@ -118,12 +109,56 @@ async function downloadBuffer(url) {
         throw new Error('Provider returned ' + (streamType || 'text') + ' instead of audio');
     }
     const chunks = [];
+    let total = 0;
     await new Promise((res, rej) => {
-        r.data.on('data', c => chunks.push(c));
+        r.data.on('data', c => {
+            total += c.length;
+            if (total > MAX_AUDIO_BYTES) {
+                r.data.destroy(new Error('Audio download exceeds the 50 MB limit.'));
+                return;
+            }
+            chunks.push(c);
+        });
         r.data.on('end', res);
         r.data.on('error', rej);
     });
     return Buffer.concat(chunks);
+}
+
+function downloadWithYtdl(videoUrl) {
+    const MAX_AUDIO_BYTES = 50 * 1024 * 1024;
+    const ytdl = require('@distube/ytdl-core');
+    return new Promise((resolve, reject) => {
+        const stream = ytdl(videoUrl, {
+            filter: 'audioonly',
+            quality: 'highestaudio',
+            highWaterMark: 1 << 25,
+        });
+        const chunks = [];
+        let total = 0;
+        const timer = setTimeout(() => {
+            stream.destroy(new Error('Direct YouTube audio timed out.'));
+        }, 90000);
+        const finish = (error, buffer) => {
+            clearTimeout(timer);
+            if (error) reject(error);
+            else resolve(buffer);
+        };
+        stream.on('data', chunk => {
+            total += chunk.length;
+            if (total > MAX_AUDIO_BYTES) {
+                stream.destroy(new Error('Audio download exceeds the 50 MB limit.'));
+                return;
+            }
+            chunks.push(chunk);
+        });
+        stream.once('error', error => finish(error));
+        stream.once('end', () => {
+            const buffer = Buffer.concat(chunks);
+            if (buffer.length < 1000) return finish(new Error('YouTube returned an empty audio stream.'));
+            finish(null, buffer);
+        });
+    });
 }
 
 module.exports = {
@@ -170,10 +205,18 @@ module.exports = {
 
             // Download audio URL from APIs
             const audioUrl = await getAudioUrl(video.url);
-            if (!audioUrl) return ctx.reply(`❌ All download sources failed. Try again.${s.FOOTER}`);
-
-            // Download the actual buffer
-            let audioBuffer = await downloadBuffer(audioUrl);
+            let audioBuffer = null;
+            if (audioUrl) {
+                try {
+                    audioBuffer = await downloadBuffer(audioUrl);
+                } catch (e) {
+                    console.log('[play] Prexzy media download failed:', e.message.slice(0, 100));
+                }
+            }
+            if (!audioBuffer || audioBuffer.length < 1000) {
+                console.log('[play] falling back to the bundled YouTube audio stream');
+                audioBuffer = await downloadWithYtdl(video.url);
+            }
             if (!audioBuffer || audioBuffer.length < 1000) return ctx.reply(`❌ Download failed — empty file.${s.FOOTER}`);
 
             // Detect format from file headers (mini bot approach)

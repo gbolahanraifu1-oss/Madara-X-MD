@@ -20,7 +20,7 @@ async function streamToBuffer(stream) {
 
 module.exports = {
     name: 'setmenuimage',
-    aliases: ['setmenuimg', 'menuimage', 'setmenu'],
+    aliases: ['setmenuimg', 'menuimage'],
     description: 'Reply to an image with .setmenuimage to set it as the menu image',
     category: 'admin',
 

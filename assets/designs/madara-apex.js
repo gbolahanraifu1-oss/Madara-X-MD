@@ -1,7 +1,11 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { generateWAMessageFromContent, prepareWAMessageMedia } = require('@itsliaaa/baileys');
+const {
+  getMenuCategoryCatalog,
+  getCategoryMeta,
+  resolveCategory,
+} = require('../../lib/menuCategories');
 
 module.exports = {
   key: "madara-apex",
@@ -16,24 +20,37 @@ module.exports = {
     try{
       const grouped = extra.grouped || {};
       const categoriesMap = extra.categoriesMap;
-      let categories = {}; let totalCmds = 0;
+      let categories = {};
+      let totalCmds = 0;
+      const seen = new Set();
+      const addCategory = (rawKey, plugins) => {
+        const key = resolveCategory(rawKey, 'misc');
+        const list = Array.isArray(plugins) ? plugins : [];
+        const bucket = categories[key] || (categories[key] = []);
+        for (const plugin of list) {
+          if (!plugin || !plugin.name) continue;
+          const id = String(plugin.name);
+          if (seen.has(`${key}:${id}`)) continue;
+          seen.add(`${key}:${id}`);
+          bucket.push({
+            title: `.${id}`,
+            description: String(plugin.desc || plugin.description || 'cmd').slice(0, 60),
+            id,
+          });
+          totalCmds++;
+        }
+      };
 
       if(grouped && Object.keys(grouped).length){
         for(const k in grouped){
           if(!k) continue;
-          let catName = String(k); catName = catName.charAt(0).toUpperCase()+catName.slice(1).toLowerCase();
-          if(catName==='Gc') catName='Group'; if(catName==='Game') catName='Fun'; if(catName==='Dev') catName='Owner';
-          const arr = Array.isArray(grouped[k])? grouped[k]:[];
-          categories[catName] = arr.filter(p=>p&&p.name).map(pl=>({title:'.'+String(pl.name),description:String(pl.desc||'cmd').slice(0,35),id:String(pl.name)}));
-          totalCmds+=categories[catName].length;
+          addCategory(k, grouped[k]);
         }
       }else if(categoriesMap){
         const entries = categoriesMap instanceof Map? categoriesMap.entries():Object.entries(categoriesMap);
         for(const [k,v] of entries){
-          let catName = String(k||'Other'); catName=catName.charAt(0).toUpperCase()+catName.slice(1).toLowerCase();
           const list = v && typeof v.values==='function'? Array.from(v.values()):Array.isArray(v)? v:[];
-          categories[catName]=list.filter(p=>p&&p.name).map(pl=>({title:'.'+String(pl.name),description:String(pl.desc||'cmd').slice(0,35),id:String(pl.name)}));
-          totalCmds+=categories[catName].length;
+          addCategory(k, list);
         }
       }
 
@@ -45,10 +62,7 @@ module.exports = {
               try{
                 const fp=path.join(baseDir,c,f); try{delete require.cache[require.resolve(fp)]}catch{}
                 const plugin=require(fp); if(!plugin||!plugin.name) continue;
-                let catName=String(plugin.category||c||'Other'); catName=catName.charAt(0).toUpperCase()+catName.slice(1).toLowerCase();
-                if(!categories[catName]) categories[catName]=[];
-                categories[catName].push({title:'.'+String(plugin.name),description:String(plugin.desc||'cmd').slice(0,35),id:String(plugin.name)});
-                totalCmds++;
+                addCategory(plugin.category || c || 'misc', [plugin]);
               }catch{}
             }
           }
@@ -56,8 +70,25 @@ module.exports = {
       }
       if(!totalCmds){ categories={General:[{title:'.menu',description:'menu',id:'menu'}]}; totalCmds=1; }
 
-      const sections = Object.keys(categories).sort().map(cat=>({title:String(cat).toUpperCase()+' | '+String(categories[cat].length)+' CMDS',rows:categories[cat]}));
-      const tableCats = Object.keys(categories).sort().slice(0,9);
+      const categoryNames = Object.keys(categories).sort();
+      const categoryRows = categoryNames.map(cat => {
+        const meta = getCategoryMeta(cat, categories);
+        return {
+          title: `${meta?.e || '📂'} ${cat.toUpperCase()}`,
+          description: `${categories[cat].length} commands`,
+          id: `madara_cat_${cat}`,
+        };
+      });
+      const sections = [];
+      for (let i = 0; i < categoryRows.length; i += 10) {
+        const page = Math.floor(i / 10) + 1;
+        const pages = Math.ceil(categoryRows.length / 10);
+        sections.push({
+          title: pages > 1 ? `CATEGORIES ${page}/${pages}` : 'COMMAND CATEGORIES',
+          rows: categoryRows.slice(i, i + 10),
+        });
+      }
+      const tableCats = categoryNames;
 
       const widget = {
         version:"v0.9",
@@ -100,6 +131,7 @@ module.exports = {
   },
 
   async render(sock, msg, args, skinId, ctx){
+    const { generateWAMessageFromContent, prepareWAMessageMedia } = require('@itsliaaa/baileys');
     const from = (ctx && ctx.from) || (msg && (msg.chat || msg.key.remoteJid)) || '';
     let extra = {}; try{ const loader=require('../../lib/loader'); const cats=loader.getCategories(); if(cats instanceof Map) extra={categoriesMap:cats}; else extra={grouped:cats}; }catch{}
     const out = this.buildMadaraDesign(null,null,extra);

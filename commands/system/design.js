@@ -48,10 +48,15 @@ module.exports = {
       return await sock.sendMessage(chatId, { text: `✅ GLOBAL menu set to *${choice}* (DEV)` });
     }
 
-    if (choice === 'default') delete pref[senderId];
-    else pref[senderId] = choice;
+    // Keep an explicit per-user "default" value so it masks a non-default
+    // global skin and runs commands/system/menu.js again for this user.
+    pref[senderId] = choice;
 
     fs.writeFileSync(PREF_FILE, JSON.stringify(pref, null, 2));
-    await sock.sendMessage(chatId, { text: `✅ Your menu set to *${choice}*` });
+    await sock.sendMessage(chatId, {
+      text: choice === 'default'
+        ? `✅ Your menu is back to the original Madara menu.js design.`
+        : `✅ Your menu set to *${choice}*`,
+    });
   }
 };

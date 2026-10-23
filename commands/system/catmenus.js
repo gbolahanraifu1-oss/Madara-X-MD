@@ -1,34 +1,19 @@
 'use strict';
 const { menuBox } = require('../../lib/menuBox');
-
-// Standalone category map — not imported from menu.js to avoid circular load
-const CAT = {
-    system:    {e:'⚙️', l:'sʏsᴛᴇᴍ'},
-    group:     {e:'👥', l:'ɢʀᴏᴜᴘ'},
-    media:     {e:'📥', l:'ᴍᴇᴅɪᴀ'},
-    converter: {e:'🔄', l:'ᴄᴏɴᴠᴇʀᴛᴇʀ'},
-    sticker:   {e:'🎨', l:'sᴛɪᴄᴋᴇʀ'},
-    ai:        {e:'🤖', l:'ᴀɪ'},
-    fun:       {e:'🎮', l:'ғᴜɴ'},
-    search:    {e:'🔍', l:'sᴇᴀʀᴄʜ'},
-    utility:   {e:'🛠️',l:'ᴜᴛɪʟɪᴛʏ'},
-    finance:   {e:'💰', l:'ғɪɴᴀɴᴄᴇ'},
-    language:  {e:'🌐', l:'ʟᴀɴɢᴜᴀɢᴇ'},
-    misc:      {e:'📦', l:'ᴍɪsᴄ'},
-    owner:     {e:'👑', l:'ᴏᴡɴᴇʀ'},
-};
-
-const _SC = {a:'ᴀ',b:'ʙ',c:'ᴄ',d:'ᴅ',e:'ᴇ',f:'ғ',g:'ɢ',h:'ʜ',i:'ɪ',j:'ᴊ',
-             k:'ᴋ',l:'ʟ',m:'ᴍ',n:'ɴ',o:'ᴏ',p:'ᴘ',q:'Q',r:'ʀ',s:'s',t:'ᴛ',
-             u:'ᴜ',v:'ᴠ',w:'ᴡ',x:'x',y:'ʏ',z:'ᴢ'};
-const sc = str => String(str).toLowerCase().split('').map(c=>_SC[c]||c).join('');
+const {
+    CATEGORY_META: CAT,
+    toSmallCaps: sc,
+    getMenuCategoryCatalog,
+    getCategoryCounts,
+    resolveCategory,
+} = require('../../lib/menuCategories');
 
 function greet() {
     const h = new Date().getHours();
     return h<12?'ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ':h<17?'ɢᴏᴏᴅ ᴀғᴛᴇʀɴᴏᴏɴ':'ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ';
 }
 
-module.exports = Object.entries(CAT).map(([key, m]) => ({
+const categoryPlugins = Object.entries(CAT).filter(([key]) => key !== 'economy').map(([key, m]) => ({
     name:     `${key}menu`,
     aliases:  [`${key}cmds`],
     category: 'system',
@@ -53,3 +38,38 @@ module.exports = Object.entries(CAT).map(([key, m]) => ({
         await sock.sendMessage(ctx.from, {text}, {quoted:msg});
     }
 }));
+
+const categoryDirectoryPlugin = {
+    name: 'categorymenu',
+    aliases: ['catmenu', 'category'],
+    category: 'system',
+    desc: 'sʜᴏᴡ ᴀɴʏ ᴄᴏᴍᴍᴀɴᴅ ᴄᴀᴛᴇɢᴏʀʏ',
+    usage: '.categorymenu [category]',
+    waitReact: false,
+
+    async execute(sock, msg, args, ctx) {
+        const { sendCategoryMenu, sendCategoryDirectory } = require('./menu');
+        const rawRequested = String(args?.[0] || '').trim();
+        const requested = rawRequested ? resolveCategory(rawRequested) : '';
+        if (!requested || requested === 'all' || requested === 'list' || requested === 'more') {
+            return sendCategoryDirectory(sock, msg, ctx);
+        }
+
+        const categories = require('../../lib/loader').getCategories();
+        const catalog = getMenuCategoryCatalog(categories);
+        const counts = getCategoryCounts(categories);
+        if (!catalog[requested]) {
+            const names = Object.entries(catalog).map(([key, meta]) =>
+                `${meta.e} ${meta.l} (${counts[key] || 0})`
+            );
+            return sock.sendMessage(ctx.from, {
+                text: menuBox('📂', 'ᴀᴠᴀɪʟᴀʙʟᴇ ᴄᴀᴛᴇɢᴏʀɪᴇs', names) +
+                    `\n\nUse ${ctx.settings.prefix || '.'}categorymenu <category>.` +
+                    (ctx.settings.FOOTER || ''),
+            }, { quoted: msg });
+        }
+        return sendCategoryMenu(sock, msg, ctx, requested);
+    },
+};
+
+module.exports = [...categoryPlugins, categoryDirectoryPlugin];

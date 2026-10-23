@@ -52,7 +52,7 @@ const pairApi                                           = require('./pairApi');
     );
 
     // ── Telegram pairing bot ───────────────────────────────────────────────
-    startTelegramBot(startSession, activeSessions);
+    startTelegramBot(startSession, activeSessions, clearSession);
 
     // ── Resume all paired sessions from disk ───────────────────────────────
     await resumeSessions();

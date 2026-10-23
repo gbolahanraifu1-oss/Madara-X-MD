@@ -629,7 +629,7 @@ module.exports = {
     aliases: [],
     description: 'Created by JARVIS',
     usage: '.',
-    category: '${path.basename(path.dirname(targetPath)) || 'utility'}',
+    category: 'ai',
 
     execute: async ({ sock, msg, from, sender, args, isGroup, phoneNumber, prefix, reply, database, isOwner, isMod, isAdmin, lang, t }) => {
         await reply('✅ Command executed successfully.');
