@@ -15,7 +15,7 @@ function trackMessage(from, sender) {
         // Resolve LID via cache if available
         let num = rawNum;
         try {
-            const { resolveLid } = require('./context');
+            const { resolveLid } = require('../../lib/context');
             if (resolveLid) num = resolveLid(rawNum) || rawNum;
         } catch {}
         const key  = `msgcount_${from}`;

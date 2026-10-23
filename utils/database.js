@@ -630,7 +630,7 @@ class Database {
     // ── Font System ────────────────────────────────────────────────────────
     getFont(phoneNumber) {
         if (!this.data.users[phoneNumber]) this.data.users[phoneNumber] = {};
-        return this.data.users[phoneNumber].font || 1; // Default to font 1
+        return this.data.users[phoneNumber].font ?? 15; // Brand small-caps default; font 1 is explicit Normal.
     }
 
     setFont(phoneNumber, fontNumber) {
