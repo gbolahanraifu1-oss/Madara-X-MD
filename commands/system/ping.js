@@ -35,7 +35,7 @@ module.exports = {
                 externalAdReply: {
                     title:                 `${s.botName} sᴘᴇᴇᴅ: ${rtt}ᴍs 🎯`,
                     body:                  'ʀᴇsᴘᴏɴsᴇ ᴛɪᴍᴇ ᴍᴇᴀsᴜʀᴇᴅ',
-                    thumbnailUrl:          '',
+                    thumbnailUrl:          'https://files.catbox.moe/2prt24.jpg',
                     sourceUrl:             s.newsletterJid ? `https://whatsapp.com/channel/${s.newsletterJid}` : 'https://github.com',
                     mediaType:             1,
                     renderLargerThumbnail: false,
