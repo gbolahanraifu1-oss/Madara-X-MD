@@ -1,7 +1,7 @@
 'use strict';
 
-const PRIMARY_PAIR_SITE_URL = 'https://pair-site-wmte.onrender.com';
-const SECONDARY_PAIR_SITE_URL = 'https://pair-site-91ob.onrender.com';
+const PRIMARY_PAIR_SITE_URL = 'https://madaraweb.dpdns.org';
+const SECONDARY_PAIR_SITE_URL = 'https://madaraweb.dpdns.org';
 
 function normalizePairSiteUrl(value) {
     return String(value || '').trim().replace(/\/$/, '');
