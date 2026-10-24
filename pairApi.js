@@ -1,10 +1,5 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 💣 MADARA X-MD  |  Web Pairing API
-// GET  /health              → { status, uptime, port }
-// GET  /ping                → { ok, ts }  (keep-alive probe)
-// GET  /pair?phone=…&mode=normal|custom → { code, phone, mode, ms }
-// POST /warm                → { ok } — pre-warms socket early
-// POST /session/clear       → { ok, phone } — wipe & allow re-pair
+// 💣 MADARA X-MD  |  Web Pairing API (FIXED RE-PAIR)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 'use strict';
@@ -14,19 +9,15 @@ const url  = require('url');
 
 const PORT = parseInt(process.env.PORT || process.env.WEB_PORT || 24922, 10);
 
-// In-flight deduplication: phone → true
 const _pending  = new Map();
-// Pre-warmed sockets: phone → promise<sock>
 const _warming  = new Map();
 
-// Shared pairing code logic from pairManager (single source of truth)
 const { activeSessions, getPairingCode } = require('./lib/pairManager');
-const maintenance        = require('./lib/maintenance');
+const maintenance = require('./lib/maintenance');
 
 let _getOrCreateSock = null;
-let _clearSession    = null;  // set by init()
+let _clearSession    = null;
 
-// ── helpers ──────────────────────────────────────────────
 function setCors(res, methods = 'GET, POST, OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin',  '*');
     res.setHeader('Access-Control-Allow-Methods', methods);
@@ -42,7 +33,6 @@ function readBody(req) {
     });
 }
 
-// ── request handler ───────────────────────────────────────
 async function handleRequest(req, res) {
     setCors(res);
     if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
@@ -50,21 +40,18 @@ async function handleRequest(req, res) {
     const parsed   = url.parse(req.url, true);
     const pathname = parsed.pathname;
 
-    // ── GET /health or / ───────────────────────────────────
     if (pathname === '/' || pathname === '/health') {
         res.writeHead(200);
         res.end(JSON.stringify({ status: 'ok', uptime: process.uptime(), port: PORT }));
         return;
     }
 
-    // ── GET /ping ──────────────────────────────────────────
     if (pathname === '/ping') {
         res.writeHead(200);
         res.end(JSON.stringify({ ok: true, ts: Date.now() }));
         return;
     }
 
-    // ── POST /warm ─────────────────────────────────────────
     if (pathname === '/warm' && req.method === 'POST') {
         if (maintenance.isOn()) {
             res.writeHead(503);
@@ -80,7 +67,7 @@ async function handleRequest(req, res) {
         }
         if (!_warming.has(phone)) {
             console.log(`[WebPair] 🔥 Warming +${phone}`);
-            const p = _getOrCreateSock(phone).catch(() => null);
+            const p = _getOrCreateSock(phone, true).catch(() => null);
             _warming.set(phone, p);
             setTimeout(() => _warming.delete(phone), 90_000);
         }
@@ -89,9 +76,6 @@ async function handleRequest(req, res) {
         return;
     }
 
-    // ── POST /session/clear ────────────────────────────────
-    // Wipes the active session for a phone number so it can be re-paired.
-    // Accepts: { "phone": "2347062301699" }  or  ?phone=2347062301699
     if (pathname === '/session/clear' && req.method === 'POST') {
         const body  = await readBody(req);
         const phone = String(body.phone || parsed.query.phone || '').replace(/[^0-9]/g, '');
@@ -100,21 +84,13 @@ async function handleRequest(req, res) {
             res.end(JSON.stringify({ error: 'phone required — e.g. { "phone": "2347062301699" }' }));
             return;
         }
-
-        // Also cancel any in-flight pair request for this number
         _pending.delete(phone);
         _warming.delete(phone);
-
         try {
             const cleared = await _clearSession(phone);
             console.log(`[WebPair] 🗑️  Session cleared for +${phone}`);
             res.writeHead(200);
-            res.end(JSON.stringify({
-                ok: true,
-                phone,
-                message: `Session cleared. GET /pair?phone=${phone} to re-pair.`,
-                hadSession: cleared,
-            }));
+            res.end(JSON.stringify({ ok: true, phone, message: `Session cleared. GET /pair?phone=${phone} to re-pair.`, hadSession: cleared }));
         } catch (e) {
             console.error(`[WebPair] clear error for +${phone}:`, e.message);
             res.writeHead(500);
@@ -123,7 +99,6 @@ async function handleRequest(req, res) {
         return;
     }
 
-    // ── GET /status?phone=… ─────────────────────────────────
     if (pathname === '/status' && req.method === 'GET') {
         const phone = String(parsed.query.phone || '').replace(/[^0-9]/g, '');
         if (!phone || phone.length < 7 || phone.length > 15) {
@@ -131,31 +106,23 @@ async function handleRequest(req, res) {
             res.end(JSON.stringify({ error: 'Invalid phone number' }));
             return;
         }
-
         const mode = String(parsed.query.mode || 'custom').toLowerCase();
         if (!['normal', 'custom'].includes(mode)) {
             res.writeHead(400);
             res.end(JSON.stringify({ error: 'Invalid pairing mode. Use normal or custom.' }));
             return;
         }
-
         const session = activeSessions.get(phone);
         res.writeHead(200);
-        res.end(JSON.stringify({
-            connected: Boolean(session?.connected),
-            phone,
-        }));
+        res.end(JSON.stringify({ connected: Boolean(session?.connected), phone }));
         return;
     }
 
-    // ── GET /pair?phone=… ─────────────────────────────────
+    // ── GET /pair?phone=… — FIXED: always delete old creds for fresh code ──
     if (pathname === '/pair' && req.method === 'GET') {
         if (maintenance.isOn()) {
             res.writeHead(503);
-            res.end(JSON.stringify({
-                error: 'Pairing is temporarily disabled for maintenance.',
-                reason: maintenance.reason() || undefined,
-            }));
+            res.end(JSON.stringify({ error: 'Pairing is temporarily disabled for maintenance.', reason: maintenance.reason() || undefined }));
             return;
         }
 
@@ -166,19 +133,20 @@ async function handleRequest(req, res) {
             return;
         }
 
-        // ── FIX: extract and validate mode before use ──────
         const mode = String(parsed.query.mode || 'custom').toLowerCase();
         if (!['normal', 'custom'].includes(mode)) {
             res.writeHead(400);
             res.end(JSON.stringify({ error: 'Invalid pairing mode. Use normal or custom.' }));
             return;
         }
-        // ───────────────────────────────────────────────────
 
-        if (_pending.has(phone)) {
-            res.writeHead(429);
-            res.end(JSON.stringify({ error: `Already processing +${phone}. Wait a moment.` }));
-            return;
+        // FIX: If same number requested again, delete existing creds and generate new
+        if (_pending.has(phone) || activeSessions.has(phone)) {
+            console.log(`[WebPair] ♻️  Re-pair for +${phone} — clearing old session`);
+            _pending.delete(phone);
+            _warming.delete(phone);
+            try { await _clearSession(phone); } catch {}
+            await new Promise(r => setTimeout(r, 1000));
         }
 
         console.log(`[WebPair] 📲 Pair requested for +${phone} (mode: ${mode})`);
@@ -190,17 +158,12 @@ async function handleRequest(req, res) {
                 responded = true;
                 _pending.delete(phone);
                 res.writeHead(504);
-                res.end(JSON.stringify({
-                    error: 'Gateway timeout — bot did not receive a QR in time. Try again.',
-                    hint:  `POST /session/clear { "phone": "${phone}" } then retry.`,
-                }));
+                res.end(JSON.stringify({ error: 'Gateway timeout — bot did not receive a QR in time. Try again.', hint: `POST /session/clear { "phone": "${phone}" } then retry.` }));
             }
         }, 70_000);
 
         try {
-            const sockPromise = _warming.has(phone)
-                ? _warming.get(phone)
-                : _getOrCreateSock(phone);
+            const sockPromise = _warming.has(phone) ? _warming.get(phone) : _getOrCreateSock(phone, true);
             _warming.delete(phone);
 
             _pending.set(phone, true);
@@ -226,10 +189,7 @@ async function handleRequest(req, res) {
                 responded = true;
                 clearTimeout(httpTimer);
                 res.writeHead(500);
-                res.end(JSON.stringify({
-                    error: err.message,
-                    hint:  `POST /session/clear { "phone": "${phone}" } then retry.`,
-                }));
+                res.end(JSON.stringify({ error: err.message, hint: `POST /session/clear { "phone": "${phone}" } then retry.` }));
             }
         }
         return;
@@ -239,7 +199,6 @@ async function handleRequest(req, res) {
     res.end(JSON.stringify({ error: 'Not found' }));
 }
 
-// ── Self-ping to prevent cold starts ─────────────────────
 function startSelfPing(port) {
     const INTERVAL = 4 * 60 * 1000;
     setInterval(() => {
@@ -249,20 +208,11 @@ function startSelfPing(port) {
     }, INTERVAL);
 }
 
-// ── public API ────────────────────────────────────────────
-//
-// init(getOrCreateSock, clearSession)
-//   getOrCreateSock(phone) → Promise<sock>
-//   clearSession(phone)    → Promise<boolean>  — true if a session was found and removed
-//
 function init(getOrCreateSock, clearSession) {
     _getOrCreateSock = getOrCreateSock;
     _clearSession    = clearSession;
 
     const server = http.createServer(handleRequest);
-
-    // Prevent cloud proxies from closing idle connections and making
-    // the API appear dead after long uptime.
     server.keepAliveTimeout = 120_000;
     server.headersTimeout   = 125_000;
 
