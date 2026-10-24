@@ -34,7 +34,7 @@ const settings = {
     channelName:     '☆ᴍᴀᴅᴀʀᴀ x-ᴍᴅ | ɪɴᴄ.',
 
     // Telegram bridge — channel/group links shown as buttons on every menu
-    tgChannel1Url:   process.env.TG_CHANNEL_1_URL  || 'https://t.me/your_channel_1',
+    tgChannel1Url:   process.env.TG_CHANNEL_1_URL  || 'https://t.me/madaraxinc',
     tgChannel2Url:   process.env.TG_CHANNEL_2_URL  || '',   // leave empty to hide this button
     tgGroupUrl:      process.env.TG_GROUP_URL      || 'https://t.me/your_support_group',
     tgTutorialUrl:   process.env.TG_TUTORIAL_URL   || 'https://t.me/your_tutorial_video',
