@@ -2,7 +2,7 @@
 
 const axios = require('axios');
 const sharp = require('sharp');
-const { generateWAMessageFromContent, proto } = require('@itsliaaa/baileys');
+const { generateWAMessageFromContent, proto } = require('@dark-yasiya/baileys');
 
 /**
  * .omni — The Omniscience Protocol
@@ -142,7 +142,7 @@ module.exports = {
                 header: {
                     title: '✦ OMNI REPORT ✦',
                     hasMediaAttachment: true,
-                    imageMessage: (await require('@itsliaaa/baileys').generateWAMessageContent({ image: dashboardBuf }, { upload: sock.waUploadToServer })).imageMessage
+                    imageMessage: (await require('@dark-yasiya/baileys').generateWAMessageContent({ image: dashboardBuf }, { upload: sock.waUploadToServer })).imageMessage
                 },
                 nativeFlowMessage: {
                     buttons,

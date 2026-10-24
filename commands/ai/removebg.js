@@ -1,6 +1,6 @@
 'use strict';
 const axios=require('axios');
-const {downloadMediaMessage}=require('@itsliaaa/baileys');
+const {downloadMediaMessage}=require('@dark-yasiya/baileys');
 module.exports = {
     name:'removebg',aliases:['rmbg','bgremove','nobg'],category:'ai',desc:'ʀᴇᴍᴏᴠᴇ ɪᴍᴀɢᴇ ʙᴀᴄᴋɢʀᴏᴜɴᴅ',usage:'†removebg (reply to image)',
     async execute(sock,msg,args,ctx){

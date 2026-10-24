@@ -16,7 +16,7 @@ const {
     generateWAMessageContent,
     generateWAMessageFromContent,
     downloadContentFromMessage,
-} = require('@itsliaaa/baileys');
+} = require('@dark-yasiya/baileys');
 const { PassThrough } = require('stream');
 const ffmpeg = require('fluent-ffmpeg');
 const db = require('../../lib/db');

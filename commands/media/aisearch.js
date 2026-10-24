@@ -6,7 +6,7 @@
  */
 'use strict';
 
-const { generateWAMessageFromContent, proto } = require('@itsliaaa/baileys');
+const { generateWAMessageFromContent, proto } = require('@dark-yasiya/baileys');
 const { ddg, wiki, ogImage } = require('../../utils/googleSearchSources');
 
 function isHttpUrl(value) { return typeof value === 'string' && /^https?:\/\//i.test(value.trim()); }

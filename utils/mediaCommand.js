@@ -5,7 +5,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
-const { downloadMediaMessage } = require('@itsliaaa/baileys');
+const { downloadMediaMessage } = require('@dark-yasiya/baileys');
 const { isPrivateHost } = require('./commandHelpers');
 
 const MAX_MEDIA_BYTES = 50 * 1024 * 1024;

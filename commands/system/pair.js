@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { menuBox } = require('../../lib/menuBox');
 const { getRandomBanner } = require('../../lib/menuBanner');
-const { generateWAMessageFromContent, proto, prepareWAMessageMedia } = require('@itsliaaa/baileys');
+const { generateWAMessageFromContent, proto, prepareWAMessageMedia } = require('@dark-yasiya/baileys');
 
 const _pending = new Map();
 

@@ -1,5 +1,5 @@
 'use strict';
-const { downloadMediaMessage } = require('@itsliaaa/baileys');
+const { downloadMediaMessage } = require('@dark-yasiya/baileys');
 const fs   = require('fs');
 const path = require('path');
 module.exports = {

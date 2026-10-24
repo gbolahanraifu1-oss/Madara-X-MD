@@ -1,4 +1,4 @@
-const { downloadMediaMessage } = require('@itsliaaa/baileys');
+const { downloadMediaMessage } = require('@dark-yasiya/baileys');
 const { menuBox } = require('../../lib/menuBox');
 module.exports = {
     name: 'stickerinfo',

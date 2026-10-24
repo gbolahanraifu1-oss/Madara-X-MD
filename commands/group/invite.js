@@ -1,6 +1,6 @@
 'use strict';
 
-const { prepareWAMessageMedia, generateMessageIDV2 } = require('@itsliaaa/baileys');
+const { prepareWAMessageMedia, generateMessageIDV2 } = require('@dark-yasiya/baileys');
 
 module.exports = {
     name: 'invite',

@@ -9,7 +9,7 @@
 
 const axios = require('axios');
 const FormData = require('form-data');
-const { downloadMediaMessage } = require('@itsliaaa/baileys');
+const { downloadMediaMessage } = require('@dark-yasiya/baileys');
 const config = require('../../config');
 const { isUrl } = require('../../lib/mediaFetch');
 

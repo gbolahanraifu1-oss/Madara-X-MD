@@ -1185,7 +1185,7 @@ async function renderCalendarCard({
 async function renderBotStatsCard({
     botName = 'MADARA · MD',
     status = 'ONLINE',
-    packageName = '@itsliaaa/baileys',
+    packageName = '@dark-yasiya/baileys',
     version = '—',
     prefix = '.',
     uptime = '—',

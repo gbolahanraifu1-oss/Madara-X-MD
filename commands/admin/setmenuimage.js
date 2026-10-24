@@ -6,7 +6,7 @@
  */
 'use strict';
 
-const { downloadContentFromMessage } = require('@itsliaaa/baileys');
+const { downloadContentFromMessage } = require('@dark-yasiya/baileys');
 const fs   = require('fs');
 const path = require('path');
 

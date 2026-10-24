@@ -1,4 +1,4 @@
-const { downloadMediaMessage } = require('@itsliaaa/baileys');
+const { downloadMediaMessage } = require('@dark-yasiya/baileys');
 const { exec } = require('child_process');
 const fs = require('fs'), path = require('path');
 const tmp = path.join(process.cwd(), 'temp');

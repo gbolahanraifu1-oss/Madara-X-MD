@@ -15,7 +15,7 @@
 
 const database = require('../../utils/database');
 
-const { downloadContentFromMessage } = require('@itsliaaa/baileys');
+const { downloadContentFromMessage } = require('@dark-yasiya/baileys');
 
 const TIMEOUT_MS = 30_000;
 

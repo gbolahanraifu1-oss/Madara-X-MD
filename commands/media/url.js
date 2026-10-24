@@ -1,7 +1,7 @@
 'use strict';
 
 const path = require('path');
-const { generateWAMessageFromContent, proto } = require('@itsliaaa/baileys');
+const { generateWAMessageFromContent, proto } = require('@dark-yasiya/baileys');
 const { resolveMedia, downloadResolvedMedia, fetchUrlBuffer } = require('../../utils/mediaCommand');
 const { normalizeHttpUrl, prefixOf, truncate } = require('../../utils/commandHelpers');
 

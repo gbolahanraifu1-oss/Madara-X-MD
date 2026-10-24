@@ -1,4 +1,4 @@
-const { downloadMediaMessage } = require('@itsliaaa/baileys');
+const { downloadMediaMessage } = require('@dark-yasiya/baileys');
 const db = require('../../lib/db');
 module.exports = {
     name: 'stickeradd',

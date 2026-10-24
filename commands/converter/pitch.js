@@ -6,7 +6,7 @@ const q=msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
 const a=q?.audioMessage||msg.message?.audioMessage;
 if(!a)return ctx.reply('❌ ʀᴇᴘʟʏ ᴛᴏ ᴀᴜᴅɪᴏ.'+s.FOOTER);
 await ctx.react('⏳');
-try{const{downloadMediaMessage}=require('@itsliaaa/baileys');
+try{const{downloadMediaMessage}=require('@dark-yasiya/baileys');
 const target=q?{key:{remoteJid:ctx.from,id:msg.message.extendedTextMessage.contextInfo.stanzaId},message:q}:msg;
 const buf=await downloadMediaMessage(target,'buffer',{},{reuploadRequest:sock.updateMediaMessage});
 const{ffmpeg}=require('../../lib/converter');

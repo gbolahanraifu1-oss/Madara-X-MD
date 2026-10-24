@@ -1,6 +1,6 @@
 'use strict';
 const axios = require('axios');
-const { downloadMediaMessage } = require('@itsliaaa/baileys');
+const { downloadMediaMessage } = require('@dark-yasiya/baileys');
 module.exports = {
     name: 'ocr', aliases: ['readtext', 'scan', 'readimg'],
     category: 'utility', desc: 'ᴇxᴛʀᴀᴄᴛ ᴛᴇxᴛ ғʀᴏᴍ ᴀɴ ɪᴍᴀɢᴇ',

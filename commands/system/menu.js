@@ -9,7 +9,7 @@ const {
     resolveCategory,
     splitMenuLines,
 } = require('../../lib/menuCategories');
-const { generateWAMessageFromContent, proto, prepareWAMessageMedia } = require('@itsliaaa/baileys');
+const { generateWAMessageFromContent, proto, prepareWAMessageMedia } = require('@dark-yasiya/baileys');
 
 const _SC = {a:'ᴀ',b:'ʙ',c:'ᴄ',d:'ᴅ',e:'ᴇ',f:'ғ',g:'ɢ',h:'ʜ',i:'ɪ',j:'ᴊ',k:'ᴋ',l:'ʟ',m:'ᴍ',n:'ɴ',o:'ᴏ',p:'ᴘ',q:'Q',r:'ʀ',s:'s',t:'ᴛ',u:'ᴜ',v:'ᴠ',w:'ᴡ',x:'x',y:'ʏ',z:'ᴢ'};
 const sc = str => String(str).toLowerCase().split('').map(c=>_SC[c]||c).join('');

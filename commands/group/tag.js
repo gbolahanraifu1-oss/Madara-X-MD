@@ -4,7 +4,7 @@
 // Smart: detects replied media and re-sends
 // with all members mentioned
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const { downloadMediaMessage } = require('@itsliaaa/baileys');
+const { downloadMediaMessage } = require('@dark-yasiya/baileys');
 module.exports = {
     name: 'tag',
     aliases: ['mention', 'tagmember', 'ping'],

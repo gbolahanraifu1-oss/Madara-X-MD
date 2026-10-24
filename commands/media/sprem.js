@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
-const { downloadContentFromMessage } = require('@itsliaaa/baileys');
+const { downloadContentFromMessage } = require('@dark-yasiya/baileys');
 const { addExif } = require('../../library/exif');
 
 module.exports = {

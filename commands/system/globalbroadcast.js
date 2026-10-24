@@ -6,7 +6,7 @@
 // ╚══════════════════════════════════════════════════════╝
 'use strict';
 
-const { downloadMediaMessage } = require('@itsliaaa/baileys');
+const { downloadMediaMessage } = require('@dark-yasiya/baileys');
 
 module.exports = {
     name:      'gb',                                    // shortened — was "globalbroadcast"

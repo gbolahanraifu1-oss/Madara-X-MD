@@ -14,7 +14,7 @@ const {
     makeCacheableSignalKeyStore,
     Browsers,
     isJidBroadcast,
-} = require('@itsliaaa/baileys');
+} = require('@dark-yasiya/baileys');
 
 const pino     = require('pino');
 const fs       = require('fs');

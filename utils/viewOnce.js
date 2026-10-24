@@ -96,7 +96,7 @@ function extractViewOnce(node, depth = 0, seen = new Set()) {
 }
 
 async function downloadMedia(mediaMsg, mediaType, retries = 3) {
-    const { downloadContentFromMessage } = require('@itsliaaa/baileys');
+    const { downloadContentFromMessage } = require('@dark-yasiya/baileys');
     let lastError;
     for (let attempt = 1; attempt <= retries; attempt += 1) {
         try {

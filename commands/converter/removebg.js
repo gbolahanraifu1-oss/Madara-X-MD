@@ -1,5 +1,5 @@
 const axios = require('axios');
-const { downloadMediaMessage } = require('@itsliaaa/baileys');
+const { downloadMediaMessage } = require('@dark-yasiya/baileys');
 const FormData = require('form-data');
 module.exports = {
     name: 'removebg',

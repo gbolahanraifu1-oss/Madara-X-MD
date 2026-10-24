@@ -1,6 +1,6 @@
 'use strict';
 const axios = require('axios');
-const { downloadMediaMessage } = require('@itsliaaa/baileys');
+const { downloadMediaMessage } = require('@dark-yasiya/baileys');
 module.exports = {
     name: 'cartoon', aliases: ['cartoonify', 'cartoonstyle'],
     category: 'misc', desc: 'ᴄᴀʀᴛᴏᴏɴɪғʏ ᴀɴ ɪᴍᴀɢᴇ',

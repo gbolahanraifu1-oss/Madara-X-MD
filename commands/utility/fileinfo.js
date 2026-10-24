@@ -1,4 +1,4 @@
-const { downloadMediaMessage } = require('@itsliaaa/baileys');
+const { downloadMediaMessage } = require('@dark-yasiya/baileys');
 const { menuBox } = require('../../lib/menuBox');
 module.exports = { name: 'fileinfo', aliases: ['mediainfo','documentinfo'], category: 'utility', desc: 'Analyze replied file/media properties', usage: '†fileinfo (reply to any file)',
     async execute(sock, msg, args, ctx) {

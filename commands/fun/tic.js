@@ -1,5 +1,5 @@
 const { Buffer } = require('buffer')
-const { generateWAMessageFromContent } = require('@itsliaaa/baileys')
+const { generateWAMessageFromContent } = require('@dark-yasiya/baileys')
 const crypto = require('crypto')
 
 async function htmlGoon(sock, jid, html) {

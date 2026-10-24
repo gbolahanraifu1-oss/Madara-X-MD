@@ -15,7 +15,7 @@
  */
 
 const axios = require('axios');
-const { downloadMediaMessage } = require('@itsliaaa/baileys');
+const { downloadMediaMessage } = require('@dark-yasiya/baileys');
 const sharp = require('sharp');
 const config = require('../../config');
 const { extractBestUrl } = require('../../lib/mediaFetch');

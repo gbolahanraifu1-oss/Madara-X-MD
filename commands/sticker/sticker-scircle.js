@@ -1,5 +1,5 @@
 'use strict';
-const { downloadMediaMessage } = require('@itsliaaa/baileys');
+const { downloadMediaMessage } = require('@dark-yasiya/baileys');
 const { Sticker, StickerTypes } = require('../../lib/sticker');
 module.exports = {
     name: 'scircle', aliases: ['circsticker', 'roundsticker'],
