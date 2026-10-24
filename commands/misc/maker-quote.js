@@ -1,21 +1,15 @@
 'use strict';
-const axios = require('axios');
+const { makeQuoteImage } = require('../../lib/quoteImage');
 module.exports = {
-    name: 'makequote', aliases: ['quotegen', 'fakequote'],
-    category: 'misc', desc: 'ɢᴇɴᴇʀᴀᴛᴇ ᴀ ǫᴜᴏᴛᴇ ɪᴍᴀɢᴇ',
-    usage: '†makequote <text>',
+    name: 'makequote', aliases: ['quotegen', 'fakequote'], category: 'misc',
+    desc: 'Generate a Madara quote image locally', usage: '†makequote <text>',
     async execute(sock, msg, args, ctx) {
         const s = ctx.settings;
-        const text = args.join(' ');
-        if (!text) return ctx.reply(`❌ *ᴜsᴀɢᴇ:* ${s.prefix}makequote Your text here${s.FOOTER}`);
-        const name = ctx.pushName || s.ownerName;
+        const text = args.join(' ').trim();
+        if (!text) return ctx.reply('❌ *ᴜsᴀɢᴇ:* ' + s.prefix + 'makequote Your text here' + s.FOOTER);
         try {
-            const url = `https://api.dreaded.site/api/quotly?text=${encodeURIComponent(text)}&name=${encodeURIComponent(name)}`;
-            const res = await axios.get(url, { responseType: 'arraybuffer' }).catch(async () => {
-                const r2 = await axios.get(`https://some-random-api.com/canvas/quote?avatar=&username=${encodeURIComponent(name)}&quote=${encodeURIComponent(text)}`, { responseType: 'arraybuffer' });
-                return r2;
-            });
-            await sock.sendMessage(ctx.from, { image: Buffer.from(res.data), caption: `💬${s.FOOTER}` }, { quoted: msg });
-        } catch (e) { await ctx.reply(`❌ ᴇʀʀᴏʀ: ${e.message}${s.FOOTER}`); }
-    }
+            const image = await makeQuoteImage(text, ctx.pushName || s.ownerName);
+            return sock.sendMessage(ctx.from, { image, caption: '💬' + s.FOOTER }, { quoted: msg });
+        } catch (error) { return ctx.reply('❌ Quote image could not be created.' + s.FOOTER); }
+    },
 };

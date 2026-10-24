@@ -1,8 +1,16 @@
 'use strict';
-const axios=require('axios');
-module.exports={name:'detect',aliases:['langdetect','whatlang'],category:'language',desc:'ᴅᴇᴛᴇᴄᴛ ʟᴀɴɢᴜᴀɢᴇ',usage:'†detect <text>',
-async execute(sock,msg,args,ctx){const s=ctx.settings;
-const q=args.join(' ');if(!q)return ctx.reply('❌ '+s.prefix+'detect Bonjour'+s.FOOTER);
-try{const r=await require('axios').get('https://api.dreaded.site/api/detect-lang?text='+encodeURIComponent(q));
-await ctx.reply('🌐 *ᴅᴇᴛᴇᴄᴛᴇᴅ:* '+(r.data?.result?.language||r.data?.language||'ᴜɴᴋɴᴏᴡɴ')+s.FOOTER);}
-catch(e){await ctx.reply('❌ '+e.message+s.FOOTER);}}};
+const { detectLanguage } = require('../../lib/apiReplacements');
+module.exports = {
+    name: 'detect', aliases: ['langdetect', 'whatlang'], category: 'language',
+    desc: 'Detect the language of text', usage: '†detect <text>',
+    async execute(sock, msg, args, ctx) {
+        const s = ctx.settings;
+        const text = args.join(' ').trim();
+        if (!text) return ctx.reply('❌ ' + s.prefix + 'detect Bonjour' + s.FOOTER);
+        try {
+            const result = await detectLanguage(text);
+            if (!result) return ctx.reply('❌ Language could not be detected.' + s.FOOTER);
+            return ctx.reply('🌐 Detected: ' + result.name + ' (' + result.code + ')' + s.FOOTER);
+        } catch (error) { return ctx.reply('❌ Language detection is temporarily unavailable.' + s.FOOTER); }
+    },
+};

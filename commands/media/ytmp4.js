@@ -1,10 +1,16 @@
 'use strict';
-module.exports={name:'ytmp4',aliases:['videodl','yt','ytdl'],category:'media',desc:'ᴅᴏᴡɴʟᴏᴀᴅ ʏᴏᴜᴛᴜʙᴇ ᴠɪᴅᴇᴏ',usage:'†ytmp4 <url>',
-async execute(sock,msg,args,ctx){const s=ctx.settings;
-const url=args[0];if(!url?.startsWith('http'))return ctx.reply('❌ ᴘʀᴏᴠɪᴅᴇ ᴀ ʏᴏᴜᴛᴜʙᴇ ᴜʀʟ.'+s.FOOTER);
-await ctx.react('⏳');
-try{const axios=require('axios');
-const r=await axios.get('https://api.dreaded.site/api/ytdl?url='+encodeURIComponent(url));
-const vid=r.data?.result?.video||r.data?.url;if(!vid)throw new Error('ɴᴏ ᴠɪᴅᴇᴏ');
-await sock.sendMessage(ctx.from,{video:{url:vid},mimetype:'video/mp4',caption:'📹 ʏᴏᴜᴛᴜʙᴇ ᴠɪᴅᴇᴏ'+s.FOOTER},{quoted:msg});
-}catch(e){await ctx.reply('❌ '+e.message+s.FOOTER);}}};
+const { validateAllowedUrl, downloadBuffer } = require('../../lib/ytDlpDownload');
+module.exports = {
+    name: 'ytmp4', aliases: ['videodl', 'yt', 'ytdl'], category: 'media',
+    desc: 'Download a YouTube video', usage: '†ytmp4 <url>',
+    async execute(sock, msg, args, ctx) {
+        const s = ctx.settings;
+        if (!args[0]) return ctx.reply('❌ Provide a YouTube URL.' + s.FOOTER);
+        await ctx.react('⏳');
+        try {
+            const url = validateAllowedUrl(args[0], ['youtube.com', 'youtu.be']);
+            const video = await downloadBuffer(url, { format: 'best[ext=mp4]/best' });
+            return sock.sendMessage(ctx.from, { video, mimetype: 'video/mp4', caption: '📹 YouTube video' + s.FOOTER }, { quoted: msg });
+        } catch (error) { return ctx.reply('❌ Video download failed: ' + String(error.message || error).slice(0, 180) + s.FOOTER); }
+    },
+};

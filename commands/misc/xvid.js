@@ -1,23 +1,15 @@
 'use strict';
-const axios = require('axios');
+const { validateAllowedUrl, downloadBuffer } = require('../../lib/ytDlpDownload');
 module.exports = {
-    name: 'xvideos', aliases: ['xvid', 'xvideo'],
-    category: 'misc', desc: '🔞 xᴠɪᴅᴇᴏs sᴇᴀʀᴄʜ (18+)',
-    usage: '†xvideos <query>',
+    name: 'xvideos', aliases: ['xvid', 'xvideo'], category: 'misc',
+    desc: 'Download a direct public Xvideos link (18+)', usage: '†xvideos <Xvideos URL>',
     async execute(sock, msg, args, ctx) {
         const s = ctx.settings;
-        const q = args.join(' ');
-        if (!q) return ctx.reply(`❌ *ᴜsᴀɢᴇ:* ${s.prefix}xvideos query${s.FOOTER}`);
+        if (!args[0]) return ctx.reply('❌ Usage: ' + s.prefix + 'xvideos <Xvideos URL>' + s.FOOTER);
         try {
-            const res = await axios.get(`https://api.dreaded.site/api/xvideos?query=${encodeURIComponent(q)}`);
-            const results = res.data?.result?.slice(0, 3);
-            if (!results?.length) return ctx.reply(`❌ ɴᴏ ʀᴇsᴜʟᴛs.${s.FOOTER}`);
-            for (const r of results) {
-                await sock.sendMessage(ctx.from, {
-                    image: { url: r.thumbnail }, 
-                    caption: `🎥 *${r.title}*\n⏱️ ${r.duration}\n🔗 ${r.link}${s.FOOTER}`
-                }, { quoted: msg });
-            }
-        } catch (e) { await ctx.reply(`❌ ᴇʀʀᴏʀ: ${e.message}${s.FOOTER}`); }
-    }
+            const url = validateAllowedUrl(args[0], ['xvideos.com']);
+            const video = await downloadBuffer(url, { format: 'best[ext=mp4]/best' });
+            return sock.sendMessage(ctx.from, { video, mimetype: 'video/mp4', caption: '🎥 Xvideos clip' + s.FOOTER }, { quoted: msg });
+        } catch (error) { return ctx.reply('❌ Download failed: ' + String(error.message || error).slice(0, 160) + s.FOOTER); }
+    },
 };

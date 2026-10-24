@@ -1,17 +1,16 @@
 'use strict';
-const axios=require('axios');
+const { validateAllowedUrl, downloadBuffer } = require('../../lib/ytDlpDownload');
 module.exports = {
-    name:'twitter',aliases:['tw','twdl','xdl','xvideo'],category:'media',desc:'ᴅᴏᴡɴʟᴏᴀᴅ ᴛᴡɪᴛᴛᴇʀ/x ᴠɪᴅᴇᴏ',usage:'†twitter <url>',
-    async execute(sock,msg,args,ctx){
-        const s=ctx.settings,url=args[0];
-        if(!url)return ctx.reply(`❌ *ᴜsᴀɢᴇ:* ${s.prefix}twitter <url>${s.FOOTER}`);
+    name: 'twitter', aliases: ['tw', 'twdl', 'xdl'], category: 'media',
+    desc: 'Download a public X/Twitter video', usage: '†twitter <url>',
+    async execute(sock, msg, args, ctx) {
+        const s = ctx.settings;
+        if (!args[0]) return ctx.reply('❌ Usage: ' + s.prefix + 'twitter <url>' + s.FOOTER);
         await ctx.react('⏳');
-        try{
-            const res=await axios.get(`https://api.dreaded.site/api/twitter?url=${encodeURIComponent(url)}`);
-            const d=res.data?.result||res.data;
-            const vurl=d?.url||d?.video_url||d?.media?.[0]?.url;
-            if(!vurl)throw new Error('ɴᴏ ᴠɪᴅᴇᴏ');
-            await sock.sendMessage(ctx.from,{video:{url:vurl},mimetype:'video/mp4',caption:`🐦 ᴛᴡɪᴛᴛᴇʀ/x${s.FOOTER}`},{quoted:msg});
-        }catch(e){await ctx.reply(`❌ ᴇʀʀᴏʀ: ${e.message}${s.FOOTER}`);}
-    }
+        try {
+            const url = validateAllowedUrl(args[0], ['x.com', 'twitter.com']);
+            const video = await downloadBuffer(url, { format: 'best[ext=mp4]/best' });
+            return sock.sendMessage(ctx.from, { video, mimetype: 'video/mp4', caption: '🐦 X / Twitter video' + s.FOOTER }, { quoted: msg });
+        } catch (error) { return ctx.reply('❌ Download failed: ' + String(error.message || error).slice(0, 160) + s.FOOTER); }
+    },
 };

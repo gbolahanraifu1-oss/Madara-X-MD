@@ -1,9 +1,17 @@
 'use strict';
-const axios=require('axios');
-module.exports={name:'paraphrase',aliases:['rephrase','rewrite'],category:'misc',desc:'ʀᴇᴡʀɪᴛᴇ ᴛᴇxᴛ',usage:'†paraphrase <text>',
-async execute(sock,msg,args,ctx){const s=ctx.settings;
-const q=args.join(' ');if(!q)return ctx.reply('❌ ᴘʀᴏᴠɪᴅᴇ ᴛᴇxᴛ.'+s.FOOTER);
-await ctx.react('⏳');
-try{const r=await require('axios').get('https://api.dreaded.site/api/gpt?text=Paraphrase+this+text:+'+encodeURIComponent(q));
-await ctx.reply('✏️ *ʀᴇᴡʀɪᴛᴛᴇɴ*\n\n'+(r.data?.result||r.data?.message||q)+s.FOOTER);}
-catch(e){await ctx.reply('❌ '+e.message+s.FOOTER);}}};
+const { ask } = require('../../utils/smartAI');
+module.exports = {
+    name: 'paraphrase', aliases: ['rephrase', 'rewrite'], category: 'misc',
+    desc: 'Rewrite text with the configured AI provider', usage: '†paraphrase <text>',
+    async execute(sock, msg, args, ctx) {
+        const s = ctx.settings;
+        const text = args.join(' ').trim();
+        if (!text) return ctx.reply('❌ Provide text to rewrite.' + s.FOOTER);
+        await ctx.react('⏳');
+        try {
+            const result = await ask({ system: 'Rewrite the user text naturally while preserving its exact meaning and language. Return only the rewritten text.', user: text, remember: false });
+            if (!result) return ctx.reply('❌ AI is busy or not configured. Try again later.' + s.FOOTER);
+            return ctx.reply('✏️ Rewritten\n\n' + result + s.FOOTER);
+        } catch (error) { return ctx.reply('❌ AI rewrite is unavailable. Check the configured AI provider.' + s.FOOTER); }
+    },
+};

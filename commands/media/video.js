@@ -1,15 +1,11 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
-const { spawn } = require('child_process');
 const axios = require('axios');
 const yts = require('yt-search');
+const { downloadBuffer } = require('../../lib/ytDlpDownload');
 
-const TEMP_DIR = path.join(process.cwd(), 'temp');
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 const REQUEST_TIMEOUT = 60_000;
-if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
 
 const HTTP_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
@@ -77,10 +73,6 @@ async function downloadFromApi(videoUrl) {
     const encoded = encodeURIComponent(videoUrl);
     const providers = [
         {
-            name: 'Dreaded',
-            endpoint: 'https://api.dreaded.site/api/ytdl?url=' + encoded,
-        },
-        {
             name: 'Siputzx',
             endpoint: 'https://api.siputzx.my.id/api/d/ytmp4?url=' + encoded,
         },
@@ -109,36 +101,10 @@ async function downloadFromApi(videoUrl) {
     throw new Error('all video providers failed (' + failures.join('; ') + ')');
 }
 
-function downloadWithYtDlp(videoUrl, outputPath) {
-    return new Promise((resolve, reject) => {
-        const args = [
-            '--no-playlist',
-            '--no-part',
-            '--no-warnings',
-            '--no-progress',
-            '--socket-timeout', '30',
-            '--retries', '2',
-            '--max-filesize', '50M',
-            '-f', 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b',
-            '--merge-output-format', 'mp4',
-            '-o', outputPath,
-            videoUrl,
-        ];
-        const child = spawn('yt-dlp', args, { stdio: ['ignore', 'ignore', 'pipe'] });
-        let errorText = '';
-        child.stderr.on('data', chunk => { errorText += chunk.toString(); });
-        child.once('error', error => reject(error));
-        child.once('close', code => {
-            if (code !== 0) return reject(new Error(errorText.trim().split('\n').slice(-1)[0] || 'yt-dlp exited with code ' + code));
-            if (!fs.existsSync(outputPath)) return reject(new Error('yt-dlp did not create a video file'));
-            try {
-                const buffer = fs.readFileSync(outputPath);
-                if (looksLikeBotCheck(buffer) || !looksLikeVideo(buffer, 'video/mp4')) return reject(new Error('yt-dlp returned a non-video response'));
-                if (buffer.length > MAX_VIDEO_BYTES) return reject(new Error('video is larger than 50 MB'));
-                resolve(buffer);
-            } catch (error) { reject(error); }
-        });
-    });
+async function downloadWithYtDlp(videoUrl) {
+    const buffer = await downloadBuffer(videoUrl, { maxBytes: MAX_VIDEO_BYTES });
+    if (looksLikeBotCheck(buffer) || !looksLikeVideo(buffer, 'video/mp4')) throw new Error('yt-dlp returned a non-video response');
+    return buffer;
 }
 
 async function downloadVideo(videoUrl) {
@@ -149,14 +115,11 @@ async function downloadVideo(videoUrl) {
         failures.push(error.message);
     }
 
-    const outputPath = path.join(TEMP_DIR, 'video-' + Date.now() + '-' + Math.random().toString(36).slice(2) + '.mp4');
     try {
-        return { buffer: await downloadWithYtDlp(videoUrl, outputPath), provider: 'yt-dlp' };
+        return { buffer: await downloadWithYtDlp(videoUrl), provider: 'yt-dlp' };
     } catch (error) {
         failures.push(error.message);
         throw new Error('YouTube download unavailable. ' + failures.join(' | '));
-    } finally {
-        try { fs.unlinkSync(outputPath); } catch {}
     }
 }
 
