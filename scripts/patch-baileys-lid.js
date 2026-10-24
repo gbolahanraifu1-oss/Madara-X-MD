@@ -1,11 +1,16 @@
 'use strict';
 
-const fs = require('node:fs');
-const path = require('node:path');
+import fs from 'node:fs';
+import path from 'node:path';
+import process from 'node:process';
+import url from 'node:url';
+import { createRequire } from 'node:module';
 
-const MARKER = 'const __madaraDecryptWithIdentityFallback =';
+const require = createRequire(import.meta.url);
 
-async function decryptWithIdentityFallback(repository, user, stanza, e2eType, content, isLidUser) {
+export const MARKER = 'const __madaraDecryptWithIdentityFallback =';
+
+export async function decryptWithIdentityFallback(repository, user, stanza, e2eType, content, isLidUser) {
     try {
         return await repository.decryptMessage({ jid: user, type: e2eType, ciphertext: content });
     } catch (originalError) {
@@ -31,7 +36,7 @@ const REPLACEMENT = [
     '            break;',
 ].join('\n');
 
-function patchSource(source) {
+export function patchSource(source) {
     if (source.includes(MARKER)) return source;
     if (!/^['\"]use strict['\"];?$/m.test(source)) throw new Error('Baileys decoder has an unsupported header.');
     const matches = source.match(new RegExp(DECRYPT_BLOCK.source, 'g')) || [];
@@ -41,7 +46,7 @@ function patchSource(source) {
     return patched;
 }
 
-function patchInstalledBaileys() {
+export function patchInstalledBaileys() {
     const packageMain = require.resolve('@dark-yasiya/baileys');
     const decoderPath = path.join(path.dirname(packageMain), 'Utils', 'decode-wa-message.js');
     const original = fs.readFileSync(decoderPath, 'utf8');
@@ -58,9 +63,8 @@ function patchInstalledBaileys() {
     console.log('[baileys-patch] Applied LID/phone-number decrypt fallback.');
 }
 
-if (require.main === module) {
+const isMain = process.argv[1] && url.fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isMain) {
     try { patchInstalledBaileys(); }
     catch (error) { console.error('[baileys-patch] Could not patch decoder:', error.message); process.exitCode = 1; }
 }
-
-module.exports = { patchSource, decryptWithIdentityFallback, patchInstalledBaileys, MARKER };
