@@ -2,6 +2,8 @@
 // ║   MADARA X-MD — Powered by MADARA X-MD INC.        ║
 // ╚══════════════════════════════════════════════════════╝
 
+require('./scripts/patch-baileys-lid').patchInstalledBaileys();
+
 process.on('uncaughtException', (err) => {
     const noise = ['ECONNRESET','ETIMEDOUT','EPIPE','ENOTFOUND','EFATAL','Connection Closed'];
     if (noise.some(n => err.message?.includes(n))) return;
