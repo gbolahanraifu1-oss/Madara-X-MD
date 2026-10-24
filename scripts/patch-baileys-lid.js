@@ -1,7 +1,9 @@
 'use strict';
-import fs from 'node:fs';
-import path from 'node:path';
-export const MARKER = 'const __madaraDecryptWithIdentityFallback =';
+
+const fs = require('node:fs');
+const path = require('node:path');
+
+const MARKER = 'const __madaraDecryptWithIdentityFallback =';
 
 async function decryptWithIdentityFallback(repository, user, stanza, e2eType, content, isLidUser) {
     try {
@@ -21,12 +23,12 @@ async function decryptWithIdentityFallback(repository, user, stanza, e2eType, co
 }
 
 const HELPER_SOURCE = MARKER + ' ' + decryptWithIdentityFallback.toString() + ';';
-const DECRYPT_BLOCK = /case 'pkmsg':\s*case 'msg':\s*msgBuffer = await repository\.decryptMessage\(\{\s*jid: user,\s*type: e2eType,\s*ciphertext: content\s*\}\)\s*break/;
+const DECRYPT_BLOCK = /case 'pkmsg':\s*case 'msg':\s*msgBuffer = await repository\.decryptMessage\(\{\s*jid: user,\s*type: e2eType,\s*ciphertext: content\s*\}\)\s*break;?/;
 const REPLACEMENT = [
     "case 'pkmsg':",
     "case 'msg':",
     '            msgBuffer = await __madaraDecryptWithIdentityFallback(repository, user, stanza, e2eType, content, WABinary_1.isLidUser);',
-    '            break',
+    '            break;',
 ].join('\n');
 
 function patchSource(source) {
@@ -61,4 +63,4 @@ if (require.main === module) {
     catch (error) { console.error('[baileys-patch] Could not patch decoder:', error.message); process.exitCode = 1; }
 }
 
-module.exports = { patchSource, decryptWithIdentityFallback, patchInstalledBaileys };
+module.exports = { patchSource, decryptWithIdentityFallback, patchInstalledBaileys, MARKER };
