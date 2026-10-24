@@ -1,7 +1,7 @@
 'use strict';
 import fs from 'node:fs';
 import path from 'node:path';
-export const MARKER = 'const __madaraDecryptWithIdentityFallback =A';
+export const MARKER = 'const __madaraDecryptWithIdentityFallback =';
 
 async function decryptWithIdentityFallback(repository, user, stanza, e2eType, content, isLidUser) {
     try {
