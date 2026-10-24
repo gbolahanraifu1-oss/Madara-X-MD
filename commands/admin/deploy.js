@@ -9,10 +9,10 @@ module.exports = {
     async execute({ sock, msg, from, reply }) {
         const PRIMARY_PAIR_URL = 'https://pair-site-wmte.onrender.com/';
         const SECONDARY_PAIR_URL = 'https://pair-site-91ob.onrender.com/';
-        const PREVIEW   = `https://api.microlink.io/?url=${encodeURIComponent(PRIMARY_PAIR_URL)}&screenshot=true&meta=false&embed=screenshot.url`;
+        const PREVIEW = `https://api.microlink.io/?url=${encodeURIComponent(PRIMARY_PAIR_URL)}&screenshot=true&meta=false&embed=screenshot.url`;
 
         const card =
-            `╭─❒ ◈ 𝙈𝘼𝘿𝘼𝙍𝘼 𝘿𝙀𝙋𝙇𝙊𝙔 ❒\n` +
+            `╭─❒ ◈ 𝙼𝙰𝙳𝙰𝚁𝙰 𝘿𝙀𝙋𝙇𝙾𝚈 ❒\n` +
             `│\n` +
             `│  🚀 *Deploy Your Own Bot*\n` +
             `│\n` +
@@ -23,16 +23,15 @@ module.exports = {
             `│\n` +
             `│  🔗 *Server 1 (primary):*\n` +
             `│  ${PRIMARY_PAIR_URL}\n` +
-            `��\n` +
+            `│\n` +
             `│  🔗 *Server 2 (backup):*\n` +
             `│  ${SECONDARY_PAIR_URL}\n` +
             `│  _Use Server 2 if Server 1 is unavailable._\n` +
             `│\n` +
-            `│  ⚡ _Powered by 𝙈𝘼𝘿𝘼𝙍𝘼_\n` +
+            `│  ⚡ _Powered by ᴍᴀᴅᴀʀᴀ x-ᴍᴅ_\n` +
             `│  📩 t.me/madaraxinc\n` +
             `╰─⛧ 𝙼𝙰𝙳𝙰𝚁𝙰 𝘷𝘦𝘳𝘪𝘧𝘪𝘦𝘥`;
 
-        // Try to send with screenshot preview image
         try {
             await sock.sendMessage(from, {
                 image: { url: PREVIEW },
@@ -41,7 +40,6 @@ module.exports = {
             return;
         } catch (_) {}
 
-        // Fallback: text only (WhatsApp auto-generates link preview)
         await reply(card);
     },
 };
