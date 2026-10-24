@@ -1,9 +1,7 @@
 // ╔══════════════════════════════════════════════════════╗
-// ║   MADARA X-MD — Powered by MADARA X-MD INC.             ║
-// ║   © 2026 MADARA X-MD INC. — All Rights Reserved           ║
+// ║   MADARA X-MD — Powered by MADARA X-MD INC.        ║
 // ╚══════════════════════════════════════════════════════╝
 
-// ── Global crash guards — keep bot alive on unhandled errors ─────────────
 process.on('uncaughtException', (err) => {
     const noise = ['ECONNRESET','ETIMEDOUT','EPIPE','ENOTFOUND','EFATAL','Connection Closed'];
     if (noise.some(n => err.message?.includes(n))) return;
@@ -22,28 +20,29 @@ const chalk    = require('chalk') || { green: s=>s, red: s=>s, cyan: s=>s, yello
 const settings = require('./settings');
 
 const { loadCommands }                                  = require('./lib/loader');
-const { startTelegramBot, pairingBridge }               = require('./lib/telegram');
-const { activeSessions, startSession, clearSession,
-        resumeSessions }                                = require('./lib/pairManager');
+const { startTelegramBot }                              = require('./lib/telegram');
+const { activeSessions, startSession, clearSession, resumeSessions } = require('./lib/pairManager');
 const pairApi                                           = require('./pairApi');
 
-// ── Boot ───────────────────────────────────────────────
 (async () => {
     console.log(chalk.cyan('\n╔══════════════════════════════════════╗'));
-    console.log(chalk.cyan('║   MADARA X-MD — MADARA X-MD INC.         ║'));
-    console.log(chalk.cyan(`║   v${settings.version} — Loading...                ║`));
+    console.log(chalk.cyan('║   MADARA X-MD — MADARA X-MD INC.     ║'));
+    console.log(chalk.cyan(`║   v${settings.version} — Loading...  ║`));
     console.log(chalk.cyan('╚══════════════════════════════════════╝\n'));
 
     const cmdCount = loadCommands();
     console.log(chalk.green(`✅ Loaded ${cmdCount} command plugins\n`));
 
-    // ── Web pairing API ────────────────────────────────────────────────────
     pairApi.init(
-        async (phone) => {
+        async (phone, forceNew = false) => {
             try {
-                return await startSession(phone, null);
-            }
-            catch (e) {
+                if (forceNew) {
+                    console.log(`[Main] Force new for +${phone} — clearing`);
+                    try { await clearSession(phone); } catch {}
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+                return await startSession(phone, null, forceNew);
+            } catch (e) {
                 console.error('[WebPair] startSession error:', e.message);
                 return null;
             }
@@ -51,30 +50,23 @@ const pairApi                                           = require('./pairApi');
         clearSession,
     );
 
-    // ── Telegram pairing bot ───────────────────────────────────────────────
     startTelegramBot(startSession, activeSessions, clearSession);
-
-    // ── Resume all paired sessions from disk ───────────────────────────────
     await resumeSessions();
 
-    // ── Start health monitor ───────────────────────────────────────────────
     const { startMonitor } = require('./lib/healthMonitor');
     startMonitor();
 
     console.log(chalk.green('\n✅ MADARA X-MD is fully operational\n'));
 })();
 
-// ── Global error guards ────────────────────────────────
 process.on('uncaughtException', (err) => {
     const msg = err?.message || String(err);
-    if (msg.includes('Connection Closed') || msg.includes('rate-overlimit') ||
-        msg.includes('not-authorized')    || msg.includes('Timed Out')) return;
+    if (msg.includes('Connection Closed') || msg.includes('rate-overlimit') || msg.includes('not-authorized') || msg.includes('Timed Out')) return;
     console.error('[Process] Uncaught Exception:', msg);
 });
 process.on('unhandledRejection', (reason) => {
     const msg = String(reason?.message || reason || '');
-    if (msg.includes('Connection Closed') || msg.includes('rate-overlimit') ||
-        msg.includes('not-authorized')    || msg.includes('Timed Out')) return;
+    if (msg.includes('Connection Closed') || msg.includes('rate-overlimit') || msg.includes('not-authorized') || msg.includes('Timed Out')) return;
     console.error('[Process] Unhandled Rejection:', msg);
 });
 
