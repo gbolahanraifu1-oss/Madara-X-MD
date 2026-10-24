@@ -23,14 +23,14 @@ module.exports = {
             `│\n` +
             `│  🔗 *Server 1 (primary):*\n` +
             `│  ${PRIMARY_PAIR_URL}\n` +
-            `│\n` +
+            `��\n` +
             `│  🔗 *Server 2 (backup):*\n` +
             `│  ${SECONDARY_PAIR_URL}\n` +
             `│  _Use Server 2 if Server 1 is unavailable._\n` +
             `│\n` +
             `│  ⚡ _Powered by 𝙈𝘼𝘿𝘼𝙍𝘼_\n` +
-            `│  📩 t.me/Madaraking\n` +
-            `╰─⛧ 𝘔𝘈𝘋𝘈𝘙𝘈 𝘷𝘦𝘳𝘪𝘧𝘪𝘦𝘥`;
+            `│  📩 t.me/madaraxinc\n` +
+            `╰─⛧ 𝙼𝙰𝙳𝙰𝚁𝙰 𝘷𝘦𝘳𝘪𝘧𝘪𝘦𝘥`;
 
         // Try to send with screenshot preview image
         try {
