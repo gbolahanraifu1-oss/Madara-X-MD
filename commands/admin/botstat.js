@@ -79,7 +79,7 @@ module.exports = {
             const buf = await renderBotStatsCard({
                 botName,
                 status: 'ONLINE',
-                packageName: '@dark-yasiya/baileys',
+                packageName: '@itsliaaa/baileys',
                 version,
                 prefix,
                 uptime: botUptime,

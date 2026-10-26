@@ -1,4 +1,4 @@
-const { downloadMediaMessage } = require('@dark-yasiya/baileys');
+const { downloadMediaMessage } = require('@itsliaaa/baileys');
 module.exports = { name: 'stickernometadata', aliases: ['clearstickerdata','removestickerinfo','stickernometa'], category: 'sticker', desc: 'Create sticker with no metadata/author info', usage: '†stickernometadata (reply to image/sticker)',
     async execute(sock, msg, args, ctx) {
         const s=ctx.settings; const ctxInfo=msg.message?.extendedTextMessage?.contextInfo;

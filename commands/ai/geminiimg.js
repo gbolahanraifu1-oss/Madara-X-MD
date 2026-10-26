@@ -1,6 +1,6 @@
 'use strict';
 
-const { downloadMediaMessage } = require('@dark-yasiya/baileys');
+const { downloadMediaMessage } = require('@itsliaaa/baileys');
 const { analyzeImage } = require('../../lib/ai');
 
 module.exports = {

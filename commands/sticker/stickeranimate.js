@@ -1,4 +1,4 @@
-const { downloadMediaMessage } = require('@dark-yasiya/baileys');
+const { downloadMediaMessage } = require('@itsliaaa/baileys');
 const { spawn } = require('child_process');
 const { Sticker, StickerTypes } = require('../../lib/sticker');
 const fs = require('fs'), path = require('path'), os = require('os');

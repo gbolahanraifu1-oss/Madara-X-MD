@@ -1,4 +1,4 @@
-const { downloadMediaMessage } = require('@dark-yasiya/baileys');
+const { downloadMediaMessage } = require('@itsliaaa/baileys');
 module.exports = {
     name: 'stealpack',
     aliases: ['copystickerpack', 'clonepack', 'packsteal'],

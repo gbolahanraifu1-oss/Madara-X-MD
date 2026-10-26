@@ -99,10 +99,10 @@ function detectorInfo() {
             'message bursts as weak evidence',
         ],
         knownLibraries: [
-            '@dark-yasiya/baileys',
+            '@itsliaaa/baileys',
             'baileys',
             '@adiwajshing/baileys',
-            '@dark-yasiya/baileys',
+            '@itsliaaa/baileys',
             '@hbmodsofc/baileys',
             'rfc-baileys',
         ],

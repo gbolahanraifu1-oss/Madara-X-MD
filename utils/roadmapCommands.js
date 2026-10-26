@@ -453,7 +453,7 @@ function quotedMedia(ctx) {
 }
 
 async function downloadMedia(message, type) {
-    const { downloadContentFromMessage } = require('@dark-yasiya/baileys');
+    const { downloadContentFromMessage } = require('@itsliaaa/baileys');
     const stream = await downloadContentFromMessage(message, type);
     const chunks = [];
     for await (const chunk of stream) chunks.push(chunk);

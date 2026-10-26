@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
-const { generateWAMessageFromContent, proto } = require('@dark-yasiya/baileys');
+const { generateWAMessageFromContent, proto } = require('@itsliaaa/baileys');
 const sharp = require('sharp');
 const database = require('./database');
 

@@ -12,7 +12,7 @@
 
 'use strict';
 
-const { generateWAMessageFromContent, proto } = require('@dark-yasiya/baileys');
+const { generateWAMessageFromContent, proto } = require('@itsliaaa/baileys');
 
 function ctaUrl(displayText, url) {
     return {

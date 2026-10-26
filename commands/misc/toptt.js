@@ -1,5 +1,5 @@
 'use strict';
-const { downloadMediaMessage } = require('@dark-yasiya/baileys');
+const { downloadMediaMessage } = require('@itsliaaa/baileys');
 module.exports = {
     name: 'toptt', aliases: ['tovoice', 'tovn'],
     category: 'misc', desc: 'ᴄᴏɴᴠᴇʀᴛ ᴀᴜᴅɪᴏ ᴛᴏ ᴘᴛᴛ ᴠᴏɪᴄᴇ ɴᴏᴛᴇ',

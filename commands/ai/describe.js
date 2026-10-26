@@ -5,7 +5,7 @@ async execute(sock,msg,args,ctx){const s=ctx.settings;
         const imgMsg=quoted?.imageMessage||msg.message?.imageMessage;
         if(!imgMsg)return ctx.reply('❌ ʀᴇᴘʟʏ ᴛᴏ ᴀɴ ɪᴍᴀɢᴇ.'+s.FOOTER);
         await ctx.react('⏳');
-        try{const {downloadMediaMessage}=require('@dark-yasiya/baileys');
+        try{const {downloadMediaMessage}=require('@itsliaaa/baileys');
         const target=quoted?{key:{remoteJid:ctx.from,id:msg.message.extendedTextMessage.contextInfo.stanzaId},message:quoted}:msg;
         const buf=await downloadMediaMessage(target,'buffer',{},{reuploadRequest:sock.updateMediaMessage});
         const form=new(require('form-data'))();form.append('image',buf,{filename:'img.jpg',contentType:'image/jpeg'});

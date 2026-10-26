@@ -21,7 +21,7 @@ const {
     downloadMediaMessage,
     generateWAMessageContent,
     generateWAMessageFromContent,
-} = require('@dark-yasiya/baileys');
+} = require('@itsliaaa/baileys');
 const { menuBox } = require('../../lib/menuBox');
 
 const PURPLE_COLOR = '#9C27B0'; // same default as .gstatus text statuses

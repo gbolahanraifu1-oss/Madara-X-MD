@@ -1,6 +1,6 @@
 'use strict';
 
-const { generateWAMessageFromContent, proto } = require('@dark-yasiya/baileys');
+const { generateWAMessageFromContent, proto } = require('@itsliaaa/baileys');
 
 const CHANNEL_LINK_RE = /(?:https?:\/\/)?(?:www\.)?whatsapp\.com\/channel\/([A-Za-z0-9_-]+)/i;
 const NEWSLETTER_JID_RE = /^\d{8,}@newsletter$/i;

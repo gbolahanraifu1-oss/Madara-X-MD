@@ -2,7 +2,7 @@
 // ║   MADARA X-MD — Context Helper                    ║
 // ╚══════════════════════════════════════════════════════╝
 
-const { downloadMediaMessage } = require('@dark-yasiya/baileys');
+const { downloadMediaMessage } = require('@itsliaaa/baileys');
 const settings = require('../settings');
 const db       = require('./db');
 const sessionTheme = require('./sessionTheme');

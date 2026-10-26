@@ -131,7 +131,7 @@ module.exports = {
   },
 
   async render(sock, msg, args, skinId, ctx){
-    const { generateWAMessageFromContent, prepareWAMessageMedia } = require('@dark-yasiya/baileys');
+    const { generateWAMessageFromContent, prepareWAMessageMedia } = require('@itsliaaa/baileys');
     const from = (ctx && ctx.from) || (msg && (msg.chat || msg.key.remoteJid)) || '';
     let extra = {}; try{ const loader=require('../../lib/loader'); const cats=loader.getCategories(); if(cats instanceof Map) extra={categoriesMap:cats}; else extra={grouped:cats}; }catch{}
     const out = this.buildMadaraDesign(null,null,extra);

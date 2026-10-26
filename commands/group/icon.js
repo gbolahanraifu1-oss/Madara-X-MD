@@ -1,4 +1,4 @@
-const { downloadMediaMessage } = require('@dark-yasiya/baileys');
+const { downloadMediaMessage } = require('@itsliaaa/baileys');
 module.exports = {
     name: 'icon',
     aliases: ['setgroupicon', 'setgpp', 'grouppp'],

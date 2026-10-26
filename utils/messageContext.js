@@ -44,7 +44,7 @@ function buildQuoted(message, key, from, sock, cache, seen = new Set()) {
         sender: key?.participant || from, participant: key?.participant || from, chat: from, text: messageText(message),
         type: Object.keys(unwrapped)[0] || 'unknown', isMedia: Boolean(mediaEntry),
         download: mediaEntry ? async () => {
-            const { downloadContentFromMessage } = require('@dark-yasiya/baileys');
+            const { downloadContentFromMessage } = require('@itsliaaa/baileys');
             const stream = await downloadContentFromMessage(unwrapped[mediaEntry[0]], mediaEntry[1]);
             const chunks = []; for await (const chunk of stream) chunks.push(chunk); return Buffer.concat(chunks);
         } : undefined,

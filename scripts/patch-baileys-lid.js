@@ -82,7 +82,7 @@ export function patchSource(source) {
 }
 
 export function patchInstalledBaileys() {
-    const packageMain = require.resolve('@dark-yasiya/baileys');
+    const packageMain = require.resolve('@itsliaaa/baileys');
     const decoderPath = path.join(path.dirname(packageMain), 'Utils', 'decode-wa-message.js');
     const original = fs.readFileSync(decoderPath, 'utf8');
     const patched = patchSource(original);

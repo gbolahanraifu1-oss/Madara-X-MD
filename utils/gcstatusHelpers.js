@@ -7,7 +7,7 @@ const { normaliseBuffer } = require('../lib/groupPhoto');
 
 let _baileys;
 let _baileysSource = 'unknown';
-const BAILEYS_CANDIDATES = ['@dark-yasiya/baileys'];
+const BAILEYS_CANDIDATES = ['@itsliaaa/baileys'];
 for (const pkg of BAILEYS_CANDIDATES) {
     try {
         _baileys = require(pkg);

@@ -1,4 +1,4 @@
-const { downloadMediaMessage } = require('@dark-yasiya/baileys');
+const { downloadMediaMessage } = require('@itsliaaa/baileys');
 const fs = require('fs'), path = require('path'), { exec } = require('child_process');
 const tmp = path.join(process.cwd(), 'temp');
 if (!fs.existsSync(tmp)) fs.mkdirSync(tmp, { recursive: true });

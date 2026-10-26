@@ -7,7 +7,7 @@ const { promisify } = require('util');
 const execAsync = promisify(exec);
 const axios = require('axios');
 const FormData = require('form-data');
-const { downloadContentFromMessage } = require('@dark-yasiya/baileys');
+const { downloadContentFromMessage } = require('@itsliaaa/baileys');
 
 // Ensure temp directory exists
 function ensureTempDir() {

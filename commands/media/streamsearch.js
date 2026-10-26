@@ -2,7 +2,7 @@
 
 const crypto = require('crypto');
 const sources = require('../../utils/googleSearchSources');
-const { generateWAMessageFromContent, proto } = require('@dark-yasiya/baileys');
+const { generateWAMessageFromContent, proto } = require('@itsliaaa/baileys');
 const { escapeHtml, sendRichHtml } = require('../../utils/genaiRich');
 
 const MAX_RESULTS = 8;

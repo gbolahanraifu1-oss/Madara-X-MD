@@ -1,5 +1,5 @@
 'use strict';
-const { downloadMediaMessage } = require('@dark-yasiya/baileys');
+const { downloadMediaMessage } = require('@itsliaaa/baileys');
 module.exports = {
     name: 'cmdwithmedia', aliases: ['mediacmd', 'execcmd'],
     category: 'misc', desc: 'ʀᴜɴ ᴀ ᴄᴏᴍᴍᴀɴᴅ ᴡɪᴛʜ ᴛʜᴇ ʀᴇᴘʟɪᴇᴅ ᴍᴇᴅɪᴀ',

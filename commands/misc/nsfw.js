@@ -1,4 +1,4 @@
-const { downloadMediaMessage } = require('@dark-yasiya/baileys');
+const { downloadMediaMessage } = require('@itsliaaa/baileys');
 const axios = require('axios');
 module.exports = { name: 'nsfw', aliases: ['nsfwcheck','safecontent'], category: 'misc', desc: 'Check NSFW percentage of an image', usage: '†nsfw (reply to image)',
     async execute(sock, msg, args, ctx) {
