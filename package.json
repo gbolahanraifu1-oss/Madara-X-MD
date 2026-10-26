@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.14.4",
-    "@dark-yasiya/baileys": "1.0.8",
+    "@itsliaaa/baileys": "0.4.0",
     "axios": "^1.20.0",
     "bcryptjs": "^2.4.3",
     "chalk": "^4.1.2",
