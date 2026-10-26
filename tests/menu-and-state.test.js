@@ -93,24 +93,34 @@ test('Apex builds menu sections for all categories within WhatsApp row limits', 
     }
 });
 
-test('long menu skins paginate without dropping categories or commands', () => {
+test('every menu design sends the full command list in one message', async () => {
     const categories = new Map([
-        ['developer', Array.from({ length: 50 }, (_, index) => ({ name: `dev-command-${index}` }))],
-        ['science', Array.from({ length: 30 }, (_, index) => ({ name: `science-command-${index}` }))],
+        ['developer', Array.from({ length: 120 }, (_, index) => ({ name: `dev-command-${index}-extended` }))],
+        ['science', Array.from({ length: 100 }, (_, index) => ({ name: `science-command-${index}-extended` }))],
     ]);
-    const pages = menuPack.buildCaptionPages('nor', {
-        settings: { prefix: '.', ownerName: 'Owner', version: 'test' },
+    const ctx = {
+        from: 'test-chat',
+        settings: { prefix: '.', ownerName: 'Owner', version: 'test', FOOTER: 'footer-once' },
+        pushName: 'Tester',
         sender: '12345@s.whatsapp.net',
         isGroup: false,
-    }, 1600, categories);
-
-    const allText = pages.join('\n');
-    assert.ok(pages.length > 1);
-    assert.ok(pages.every(page => page.length < 1600));
-    assert.match(allText, /DEVELOPER/);
-    assert.match(allText, /SCIENCE/);
-    for (const name of ['dev-command-0', 'dev-command-49', 'science-command-0', 'science-command-29']) {
-        assert.ok(allText.includes(`.${name}`), `missing ${name}`);
+    };
+    const msg = { key: { id: 'quoted-message' } };
+    for (const design of menuPack.DESIGNS) {
+        const sent = [];
+        const sock = { sendMessage: async (...args) => { sent.push(args); } };
+        await menuPack.renderDesign(design, sock, msg, [], design, ctx, categories);
+        assert.equal(sent.length, 1, `${design} should send one message`);
+        const [chat, payload, options] = sent[0];
+        assert.equal(chat, 'test-chat');
+        assert.equal(options.quoted, msg);
+        assert.ok(payload.text.length > 3000, `${design} should contain the complete long list`);
+        for (const name of ['dev-command-0-extended', 'dev-command-119-extended', 'science-command-0-extended', 'science-command-99-extended']) {
+            assert.ok(payload.text.includes(`.${name}`), `${design} omitted ${name}`);
+        }
+        assert.ok(payload.text.endsWith('footer-once'));
+        assert.ok(!payload.text.includes('PAGE '));
+        assert.ok(!payload.text.includes('CONTINUED'));
     }
 });
 
