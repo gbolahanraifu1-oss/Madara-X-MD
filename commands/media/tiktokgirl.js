@@ -199,9 +199,9 @@ module.exports = {
             console.error('[tiktokgirl] error:', err.message);
             try { await sock.sendMessage(from, { react: { text: '❌', key: msg.key } }); } catch {}
             reply(
-                '╭─❒ ◈ 𝙎𝙐𝙆𝙐𝙉𝘼 𝙈𝘿 ❒\n' +
+                '╭─❒ ◈ 𝙈𝘼𝘿𝘼𝙍𝘼 𝙓-𝙈𝘿 ❒\n' +
                 "│ ❌ 𝑪𝒐𝒖𝒍𝒅𝒏'𝒕 𝒇𝒆𝒕𝒄𝒉 𝒂 𝒗𝒊𝒅𝒆𝒐 𝒓𝒊𝒈𝒉𝒕 𝒏𝒐𝒘. 𝑻𝒓𝒚 𝒂𝒈𝒂𝒊𝒏 𝒊𝒏 𝒂 𝒎𝒐𝒎𝒆𝒏𝒕.\n" +
-                '╰─⛧ 𝙎𝙪𝙠𝙪𝙣𝙖 𝙈𝘿'
+                '╰─⛧ 𝙈𝘼𝘿𝘼𝙍𝘼 𝙓-𝙈𝘿'
             );
         }
     },

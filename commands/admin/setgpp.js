@@ -30,7 +30,7 @@ module.exports = {
             reply(
                 `╭─❒ ◈ 𝙎𝙐𝙆𝙐᳇𝘼 ❒\n` +
                 `│ ✅ *Group picture updated!*\n` +
-                `╰─⛧ 𝓹𝓪𝓼𝓺𝓾𝓪 𝓿𝓮𝓻𝓲𝓯𝓲𝓮𝓭`
+                `╰─⛧ 𝓜𝓐𝓓𝓐𝓡𝓐 𝓧-𝓜𝓓 𝓥𝓔𝓡𝓘𝓕𝓘𝓔𝓓`
             );
         } catch (e) {
             console.error('[setgpp]', e.message);

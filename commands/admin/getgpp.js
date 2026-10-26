@@ -16,7 +16,7 @@ module.exports = {
                 caption:
                     `╭─❒ ◈ 𝙎𝙐𝙆𝙐᳇𝘼 ❒\n` +
                     `│ 🖼️ *Group Profile Picture*\n` +
-                    `╰─⛧ 𝓹𝓪𝓼𝓺𝓾𝓪 𝓿𝓮𝓻𝓲𝓯𝓲𝓮𝓭`,
+                    `╰─⛧ 𝓜𝓐𝓓𝓐𝓡𝓐 𝓧-𝓜𝓓 𝓥𝓔𝓡𝓘𝓕𝓘𝓔𝓓`,
             }, { quoted: msg });
         } catch (_) {
             reply('❌ This group has no profile picture set.');
