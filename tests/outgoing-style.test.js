@@ -2,13 +2,50 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { formatTextForFont, formatText, formatOutgoingContent, wrapOutgoingSocket } = require('../lib/outgoingStyle');
+const { formatTextForFont, applyBoxStyle, formatText, formatOutgoingContent, wrapOutgoingSocket } = require('../lib/outgoingStyle');
+const database = require('../utils/database');
+const boxStyleCommand = require('../commands/system/boxstyle');
 
-test('outgoing text uses the Madara small-caps font and branded box by default', () => {
+test('outgoing text uses the Madara small-caps font and MenuBox by default', () => {
     const formatted = formatText(null, 'Hello Madara');
-    assert.ok(formatted.startsWith('╭─❒ ◈'));
-    assert.ok(formatted.includes('ʜᴇʟʟᴏ'));
-    assert.ok(formatted.endsWith('╰─⛧ 𝙈𝙖𝙙𝙖𝙧𝙖 𝙓-𝙈𝘿'));
+    assert.ok(formatted.startsWith('╭═══〘'));
+    assert.ok(formatted.includes('┃✰│ʜᴇʟʟᴏ ᴍᴀᴅᴀʀᴀ'));
+    assert.ok(formatted.endsWith('╰──────────────────'));
+});
+
+test('boxstyle command selects persisted MenuBox or StyleBox per session', async () => {
+    const phone = '__outgoing_box_style_test__';
+    const originalUser = database.data.users[phone];
+    const hadOwnSave = Object.prototype.hasOwnProperty.call(database, 'save');
+    const originalSave = database.save;
+    const replies = [];
+    database.save = () => {};
+    delete database.data.users[phone];
+    const ctx = {
+        sessionPhone: phone,
+        settings: { prefix: '.', FOOTER: '' },
+        reply: async text => replies.push(text),
+    };
+    try {
+        assert.equal(database.getBoxStyle(phone), 'menuBox');
+        assert.ok(formatText(phone, 'Hello').startsWith('╭═══〘'));
+        await boxStyleCommand.execute(null, null, ['styleBox'], ctx);
+        assert.equal(database.getBoxStyle(phone), 'styleBox');
+        assert.ok(formatText(phone, 'Hello').startsWith('╭─❒ ◈'));
+        await boxStyleCommand.execute(null, null, ['default'], ctx);
+        assert.equal(database.getBoxStyle(phone), 'menuBox');
+        assert.ok(formatText(phone, 'Hello').startsWith('╭═══〘'));
+        await boxStyleCommand.execute(null, null, [], ctx);
+        assert.match(replies.at(-1), /Current: \*menuBox\*/);
+        await boxStyleCommand.execute(null, null, ['unknown'], ctx);
+        assert.equal(database.getBoxStyle(phone), 'menuBox');
+        assert.equal(database.setBoxStyle(phone, 'unknown'), false);
+    } finally {
+        if (hadOwnSave) database.save = originalSave;
+        else delete database.save;
+        if (originalUser === undefined) delete database.data.users[phone];
+        else database.data.users[phone] = originalUser;
+    }
 });
 
 test('custom fonts preserve URLs and inline code', () => {

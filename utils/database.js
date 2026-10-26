@@ -639,6 +639,22 @@ class Database {
         this.save('users');
     }
 
+    // ── Outgoing reply box style (per bot session; defaults to MenuBox) ──
+    getBoxStyle(phoneNumber) {
+        return this.data.users[phoneNumber]?.boxStyle === 'styleBox' ? 'styleBox' : 'menuBox';
+    }
+
+    setBoxStyle(phoneNumber, boxStyle) {
+        if (!phoneNumber) return false;
+        const value = String(boxStyle || '').trim().toLowerCase();
+        const selected = value === 'stylebox' ? 'styleBox' : value === 'menubox' ? 'menuBox' : null;
+        if (!selected) return false;
+        if (!this.data.users[phoneNumber]) this.data.users[phoneNumber] = {};
+        this.data.users[phoneNumber].boxStyle = selected;
+        this.save('users');
+        return selected;
+    }
+
     // ── Aza / Bank Details (used by .aza) ────────────────────────────────
     getAzaDetails(phoneNumber) {
         if (!this.data.users[phoneNumber]) this.data.users[phoneNumber] = {};
