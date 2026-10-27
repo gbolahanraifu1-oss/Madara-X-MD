@@ -20,7 +20,7 @@ module.exports = {
             const form = new (require('form-data'))();
             form.append('file', buf, { filename: 'ocr.jpg', contentType: 'image/jpeg' });
             const res = await axios.post('https://api.ocr.space/parse/image', form, {
-                headers: { ...form.getHeaders(), apikey: 'helloworld' }
+                headers: { ...form.getHeaders(), apikey: 'YOUR_API_KEY_HERE' }
             });
             const text = res.data?.ParsedResults?.[0]?.ParsedText?.trim();
             if (!text) return ctx.reply(`❌ ɴᴏ ᴛᴇxᴛ ғᴏᴜɴᴅ ɪɴ ɪᴍᴀɢᴇ.${s.FOOTER}`);

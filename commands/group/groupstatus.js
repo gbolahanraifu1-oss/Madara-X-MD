@@ -11,18 +11,22 @@
 // ╚══════════════════════════════════════════════════════╝
 'use strict';
 
-const crypto = require('crypto');
-const {
-    generateWAMessageContent,
-    generateWAMessageFromContent,
-    downloadContentFromMessage,
-} = require('@itsliaaa/baileys');
+const { downloadContentFromMessage } = require('@itsliaaa/baileys');
 const { PassThrough } = require('stream');
 const ffmpeg = require('fluent-ffmpeg');
 const db = require('../../lib/db');
+// NOTE: the local groupStatus() helper that used to live in this file
+// (built on generateWAMessageContent/generateWAMessageFromContent/crypto
+// directly) just threw raw {text, backgroundColor} at the status — no
+// link-preview handling, so a URL posted as a plain link. Same bug as
+// commands/group/gcstatus.js had, same fix: use the shared, already-
+// working implementation in utils/gcstatusHelpers.js instead of keeping
+// a second, lower-quality duplicate of this logic in this file.
+const { postGroupStatus, fetchLinkPreview } = require('../../utils/gcstatusHelpers');
 
 // Single default color for text statuses (purple)
 const PURPLE_COLOR = '#9C27B0';
+const URL_REGEX = /https?:\/\//i;
 
 // URL / link detector — catches http(s) links, www., bare domains, and
 // WhatsApp group invite links (the most common spam dropped in statuses).
@@ -149,10 +153,23 @@ module.exports = {
                 await ctx.reply('⏳ Posting text group status...');
 
                 try {
-                    await groupStatus(sock, from, {
-                        text: caption,
-                        backgroundColor: PURPLE_COLOR,
-                    });
+                    // If the text is a bare URL, fetch its OG title/
+                    // description/image and post a rich preview card
+                    // instead of a plain link (see note above imports).
+                    let content;
+                    if (URL_REGEX.test(caption)) {
+                        const preview = await fetchLinkPreview(caption);
+                        content = {
+                            text: caption,
+                            richPreview: true,
+                            ...(preview.title       ? { previewTitle:       preview.title }       : {}),
+                            ...(preview.description ? { previewDescription: preview.description } : {}),
+                            ...(preview.imageBuffer ? { previewImage:       preview.imageBuffer } : {}),
+                        };
+                    } else {
+                        content = { text: caption, backgroundColor: PURPLE_COLOR };
+                    }
+                    await groupStatus(sock, from, content);
                     return ctx.reply(`✅ Text group status posted!${ctx.settings.FOOTER}`);
                 } catch (e) {
                     console.error('groupstatus text error:', e);
@@ -270,33 +287,10 @@ async function downloadMedia(msg, type) {
     return Buffer.concat(chunks);
 }
 
+// groupStatus() now just delegates to the shared helper from
+// utils/gcstatusHelpers.js (postGroupStatus) — see note above the imports.
 async function groupStatus(sock, jid, content) {
-    const { backgroundColor } = content;
-    delete content.backgroundColor;
-
-    const inside = await generateWAMessageContent(content, {
-        upload: sock.waUploadToServer,
-        backgroundColor: backgroundColor || PURPLE_COLOR,
-    });
-
-    const secret = crypto.randomBytes(32);
-
-    const msg = generateWAMessageFromContent(
-        jid,
-        {
-            messageContextInfo: { messageSecret: secret },
-            groupStatusMessageV2: {
-                message: {
-                    ...inside,
-                    messageContextInfo: { messageSecret: secret },
-                },
-            },
-        },
-        {}
-    );
-
-    await sock.relayMessage(jid, msg.message, { messageId: msg.key.id });
-    return msg;
+    return postGroupStatus(sock, jid, content);
 }
 
 function toVN(buffer) {

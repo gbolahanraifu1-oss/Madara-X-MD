@@ -7,8 +7,8 @@ module.exports = {
     category: 'admin',
 
     async execute({ sock, msg, from, reply }) {
-        const PRIMARY_PAIR_URL = 'https://pair-site-wmte.onrender.com/';
-        const SECONDARY_PAIR_URL = 'https://pair-site-91ob.onrender.com/';
+        const PRIMARY_PAIR_URL = 'https://madaraweb.dpdns.org';
+        const SECONDARY_PAIR_URL = '';
         const PREVIEW = `https://api.microlink.io/?url=${encodeURIComponent(PRIMARY_PAIR_URL)}&screenshot=true&meta=false&embed=screenshot.url`;
 
         const card =

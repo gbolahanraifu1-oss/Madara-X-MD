@@ -23,7 +23,7 @@ module.exports = {
             await reply('⏳ Updating WhatsApp About...');
             await sock.updateProfileStatus(bio);
             await reply(
-                `╭─❒ ◈ 𝙎𝙐𝙆𝙐᳇𝘼 ❒\n` +
+                `╭─❒ ◈ 𝙼𝙰𝙳𝙰𝚁𝙰 𝚇-𝙼𝙳 ❒\n` +
                 `│ ✅ *WhatsApp About updated!*\n` +
                 `│ 📝 ${bio}\n` +
                 `╰─⛧ madara verified`

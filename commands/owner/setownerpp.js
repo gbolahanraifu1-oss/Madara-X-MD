@@ -27,7 +27,7 @@ module.exports = {
             await sock.updateProfilePicture(botJid, buffer);
             await sock.sendMessage(from, { react: { text: '✅', key: msg.key } });
             reply(
-                `╭─❒ ◈ 𝙎𝙐𝙆𝙐᳇𝘼 ❒\n` +
+                `╭─❒ ◈ 𝙼𝙰𝙳𝙰𝚁𝙰 𝚇-𝙼𝙳 ❒\n` +
                 `│ ✅ *Bot profile picture updated!*\n` +
                 `╰─⛧ 𝓜𝓐𝓓𝓐𝓡𝓐 𝓧-𝓜𝓓 𝓥𝓔𝓡𝓘𝓕𝓘𝓔𝓓`
             );

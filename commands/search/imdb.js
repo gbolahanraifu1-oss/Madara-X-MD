@@ -5,13 +5,13 @@ module.exports = { name: 'imdb', aliases: ['imdbsearch','moviedb','tvshow'], cat
         const s=ctx.settings; const q=args.join(' '); if(!q) return ctx.reply(`❌ Usage: \`${s.prefix}imdb Inception\`${s.FOOTER}`);
         await ctx.react('🎬');
         try {
-            const res=await axios.get(`https://www.omdbapi.com/?s=${encodeURIComponent(q)}&apikey=thewdb`);
+            const res=await axios.get(`https://www.omdbapi.com/?s=${encodeURIComponent(q)}&apikey=YOUR_API_KEY_HERE`);
             const top=res.data?.Search?.[0];
             if (!top) {
                 const res2=await axios.get(`https://api.siputzx.my.id/api/ai/llama?text=${encodeURIComponent(`Provide IMDB-style info for: ${q}. Include: year, genre, director, cast, plot, rating.`)}`);
                 return ctx.reply(menuBox('🎬', `ɪᴍᴅʙ sᴇᴀʀᴄʜ: ${q}`, [res2.data?.data||'No results.']) + s.FOOTER);
             }
-            const detail=await axios.get(`https://www.omdbapi.com/?i=${top.imdbID}&apikey=thewdb`);
+            const detail=await axios.get(`https://www.omdbapi.com/?i=${top.imdbID}&apikey=YOUR_API_KEY_HERE`);
             const d=detail.data;
             // Title goes in the box header (not asterisk-wrapped) — a title
             // containing its own '*' character used to break WhatsApp's bold

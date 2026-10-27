@@ -9,7 +9,7 @@ module.exports = {
         const q = args.join(' ');
         if (!q) return ctx.reply(`❌ *ᴜsᴀɢᴇ:* ${s.prefix}movie Naruto${s.FOOTER}`);
         try {
-            const res = await axios.get(`https://www.omdbapi.com/?t=${encodeURIComponent(q)}&apikey=fc4fd0d8`);
+            const res = await axios.get(`https://www.omdbapi.com/?t=${encodeURIComponent(q)}&apikey=YOUR_API_KEY_HERE`);
             const m = res.data;
             if (m.Response === 'False') return ctx.reply(`❌ ᴍᴏᴠɪᴇ ɴᴏᴛ ғᴏᴜɴᴅ.${s.FOOTER}`);
             const text =

@@ -2,7 +2,14 @@
 // ║   MADARA X-MD — Powered by MADARA X-MD INC.        ║
 // ╚══════════════════════════════════════════════════════╝
 
-require('./scripts/patch-baileys-lid').patchInstalledBaileys();
+// NOTE: the @dark-yasiya/baileys LID-decrypt monkey-patch has been removed.
+// It patched that fork's specific decode-wa-message.js internals, which no
+// longer apply now that this build is back on @itsliaaa/baileys. Requiring
+// it here used to crash the whole process at startup — require.resolve()
+// for a package that's no longer a dependency throws immediately, before
+// anything else in this file even runs. That was almost certainly the
+// "npm issues" being hit: the same script also ran via the postinstall
+// hook (removed from package.json), so it broke `npm install` too.
 
 process.on('uncaughtException', (err) => {
     const noise = ['ECONNRESET','ETIMEDOUT','EPIPE','ENOTFOUND','EFATAL','Connection Closed'];

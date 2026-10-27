@@ -14,7 +14,7 @@ module.exports = {
             await sock.sendMessage(from, {
                 image: { url: ppUrl },
                 caption:
-                    `╭─❒ ◈ 𝙎𝙐𝙆𝙐᳇𝘼 ❒\n` +
+                    `╭─❒ ◈ 𝙼𝙰𝙳𝙰𝚁𝙰 𝚇-𝙼𝙳 ❒\n` +
                     `│ 🖼️ *Group Profile Picture*\n` +
                     `╰─⛧ 𝓜𝓐𝓓𝓐𝓡𝓐 𝓧-𝓜𝓓 𝓥𝓔𝓡𝓘𝓕𝓘𝓔𝓓`,
             }, { quoted: msg });

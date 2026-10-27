@@ -16,41 +16,21 @@
 // ╚══════════════════════════════════════════════════════╝
 'use strict';
 
-const crypto = require('crypto');
-const {
-    downloadMediaMessage,
-    generateWAMessageContent,
-    generateWAMessageFromContent,
-} = require('@itsliaaa/baileys');
+const { downloadMediaMessage } = require('@itsliaaa/baileys');
 const { menuBox } = require('../../lib/menuBox');
+// NOTE: this used to have its own local postGroupStatus() that just threw
+// raw {text, backgroundColor} at generateWAMessageContent — no link
+// preview handling at all, so a URL in the text posted as a plain blue
+// link instead of a rich card. utils/gcstatusHelpers.js already has a
+// proper, working implementation of this (postGroupStatus with
+// richPreview/previewTitle/previewDescription/previewImage support, plus
+// fetchLinkPreview for pulling OG tags) — commands/general/gcstatusdm.js
+// and commands/owner/globalstatus.js already use it correctly. This file
+// just never did. Switched to the shared helper instead of duplicating it.
+const { postGroupStatus, fetchLinkPreview } = require('../../utils/gcstatusHelpers');
 
 const PURPLE_COLOR = '#9C27B0'; // same default as .gstatus text statuses
-
-// Posts a real native "Group Status" to one group — identical mechanism
-// to the groupStatus() helper in commands/group/groupstatus.js.
-async function postGroupStatus(sock, jid, content) {
-    const { backgroundColor } = content;
-    delete content.backgroundColor;
-
-    const inside = await generateWAMessageContent(content, {
-        upload: sock.waUploadToServer,
-        backgroundColor: backgroundColor || PURPLE_COLOR,
-    });
-
-    const secret = crypto.randomBytes(32);
-    const waMsg  = generateWAMessageFromContent(
-        jid,
-        {
-            messageContextInfo: { messageSecret: secret },
-            groupStatusMessageV2: {
-                message: { ...inside, messageContextInfo: { messageSecret: secret } },
-            },
-        },
-        {}
-    );
-
-    await sock.relayMessage(jid, waMsg.message, { messageId: waMsg.key.id });
-}
+const URL_REGEX = /https?:\/\//i;
 
 module.exports = {
     name:      'allstatus',
@@ -109,6 +89,26 @@ module.exports = {
             }
         }
 
+        // ── Build the text/link content ONCE, shared across every group ────
+        // (same optimization already used for pre-downloaded media above).
+        // If the text is a bare URL, fetch its OG title/description/image
+        // and post it as a rich preview card instead of a plain link.
+        let textContent = null;
+        if (!hasMedia && text) {
+            if (URL_REGEX.test(text)) {
+                const preview = await fetchLinkPreview(text);
+                textContent = {
+                    text,
+                    richPreview: true,
+                    ...(preview.title       ? { previewTitle:       preview.title }       : {}),
+                    ...(preview.description ? { previewDescription: preview.description } : {}),
+                    ...(preview.imageBuffer ? { previewImage:       preview.imageBuffer } : {}),
+                };
+            } else {
+                textContent = { text, backgroundColor: PURPLE_COLOR };
+            }
+        }
+
         await ctx.react('📡');
 
         let sent = 0, failed = 0;
@@ -121,7 +121,7 @@ module.exports = {
                 } else if (mediaBuffer && mediaType === 'video') {
                     await postGroupStatus(sock, gid, { video: mediaBuffer, caption: text || '' });
                 } else {
-                    await postGroupStatus(sock, gid, { text, backgroundColor: PURPLE_COLOR });
+                    await postGroupStatus(sock, gid, { ...textContent });
                 }
                 sent++;
             } catch (e) {
