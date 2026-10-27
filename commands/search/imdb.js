@@ -5,7 +5,7 @@ module.exports = { name: 'imdb', aliases: ['imdbsearch','moviedb','tvshow'], cat
         const s=ctx.settings; const q=args.join(' '); if(!q) return ctx.reply(`❌ Usage: \`${s.prefix}imdb Inception\`${s.FOOTER}`);
         await ctx.react('🎬');
         try {
-            const res=await axios.get(`https://www.omdbapi.com/?s=${encodeURIComponent(q)}&apikey=YOUR_API_KEY_HERE`);
+            const res=await axios.get(`https://www.omdbapi.com/?s=${encodeURIComponent(q)}&apikey=thewdb`);
             const top=res.data?.Search?.[0];
             if (!top) {
                 const res2=await axios.get(`https://api.siputzx.my.id/api/ai/llama?text=${encodeURIComponent(`Provide IMDB-style info for: ${q}. Include: year, genre, director, cast, plot, rating.`)}`);
