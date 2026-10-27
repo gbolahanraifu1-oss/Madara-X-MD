@@ -11,7 +11,7 @@ module.exports = { name: 'imdb', aliases: ['imdbsearch','moviedb','tvshow'], cat
                 const res2=await axios.get(`https://api.siputzx.my.id/api/ai/llama?text=${encodeURIComponent(`Provide IMDB-style info for: ${q}. Include: year, genre, director, cast, plot, rating.`)}`);
                 return ctx.reply(menuBox('🎬', `ɪᴍᴅʙ sᴇᴀʀᴄʜ: ${q}`, [res2.data?.data||'No results.']) + s.FOOTER);
             }
-            const detail=await axios.get(`https://www.omdbapi.com/?i=${top.imdbID}&apikey=YOUR_API_KEY_HERE`);
+            const detail=await axios.get(`https://www.omdbapi.com/?i=${top.imdbID}&apikey=thewdb`);
             const d=detail.data;
             // Title goes in the box header (not asterisk-wrapped) — a title
             // containing its own '*' character used to break WhatsApp's bold
