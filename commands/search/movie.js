@@ -5,7 +5,7 @@ module.exports = { name: 'movie', aliases: ['moviesearch','findmovie','film'], c
         const s=ctx.settings; const q=args.join(' '); if(!q) return ctx.reply(`❌ Usage: \`${s.prefix}movie Inception\`${s.FOOTER}`);
         await ctx.react('🎬');
         try {
-            const res=await axios.get(`https://www.omdbapi.com/?s=${encodeURIComponent(q)}&apikey=YOUR_API_KEY_HERE`);
+            const res=await axios.get(`https://www.omdbapi.com/?s=${encodeURIComponent(q)}&apikey=fc4fdod8`);
             const top=res.data?.Search?.[0];
             if(!top){
                 const r2=await axios.get(`https://api.siputzx.my.id/api/ai/llama?text=${encodeURIComponent(`Give movie info for: ${q}. Include: year, director, cast, plot, rating.`)}`);
