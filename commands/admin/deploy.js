@@ -30,7 +30,7 @@ module.exports = {
             `│\n` +
             `│  ⚡ _Powered by ᴍᴀᴅᴀʀᴀ x-ᴍᴅ_\n` +
             `│  📩 t.me/madaraxinc\n` +
-            `╰─⛧ 𝙼𝙰𝙳𝙰𝚁𝙰 𝘷𝘦𝘳𝘪𝘧𝘪𝘦𝘥`;
+            `╰─⛧ 𝙼𝙰𝙳𝙰𝚁𝙰 𝚇-𝙼𝙳`;
 
         try {
             await sock.sendMessage(from, {
