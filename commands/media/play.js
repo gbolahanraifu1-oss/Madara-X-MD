@@ -15,69 +15,86 @@ function sc(str) {
     return String(str).toLowerCase().split('').map(c => m[c]||c).join('');
 }
 
-// ── DOWNLOAD BUFFER ──
 async function downloadBuffer(url, timeout = 90000) {
     const r = await axios.get(url, {
         responseType: 'arraybuffer',
         timeout,
-        headers: { 'User-Agent': 'Mozilla/5.0' }
+        maxRedirects: 5,
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': '*/*'
+        }
     });
     return Buffer.from(r.data);
 }
 
-// ── API 1: COBALT (most stable 2026) ──
-async function getCobalt(url) {
-    try {
-        const res = await axios.post('https://api.cobalt.tools/api/json', {
-            url: url, isAudioOnly: true, aFormat: 'mp3', filenamePattern: 'basic'
-        }, {
-            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-            timeout: 20000
-        });
-        if (res.data?.url) return res.data.url;
-        if (res.data?.status === 'redirect' || res.data?.status === 'tunnel') return res.data.url;
-        return null;
-    } catch (e) { console.log('[play] cobalt fail', e.message.slice(0,50)); return null; }
-}
-
-// ── API 2: VEZON (yt mp3 api) ──
-async function getVezon(url) {
-    try {
-        const res = await axios.get(`https://api.ryzumi.vip/api/downloader/youtube-mp3?url=${encodeURIComponent(url)}`, { timeout: 15000 });
-        const audio = res.data?.data?.download || res.data?.result?.download || res.data?.url;
-        if (audio?.startsWith('http')) return audio;
-        return null;
-    } catch (e) { return null; }
-}
-
-// ── API 3: LOLHUMAN / SAVETUBE ──
-async function getLol(url) {
-    try {
-        const res = await axios.get(`https://api.lolhuman.xyz/api/ytplay2?apikey=GataDios&query=${encodeURIComponent(url)}`, { timeout: 15000 });
-        const audio = res.data?.result?.audio || res.data?.audio;
-        if (audio?.startsWith('http')) return audio;
-        return null;
-    } catch { return null; }
-}
-
-// ── API 4: YT-DLP EXEC (local) ──
+// ── 1. LOCAL YT-DLP (best quality) ──
 async function getYtDlp(url, outPath) {
     try {
         const cookiePath = path.join(process.cwd(), 'cookies.txt');
-        const hasCookies = fs.existsSync(cookiePath);
-        const cookieArg = hasCookies ? `--cookies "${cookiePath}"` : '';
+        const cookieArg  = fs.existsSync(cookiePath) ? `--cookies "${cookiePath}"` : '';
         const cmds = [
-            `yt-dlp ${cookieArg} --extractor-args "youtube:player_client=android" -f bestaudio --extract-audio --audio-format mp3 -o "${outPath}" --no-playlist --no-warnings "${url}" 2>&1`,
-            `yt-dlp ${cookieArg} --extractor-args "youtube:player_client=ios" -f bestaudio --extract-audio --audio-format mp3 -o "${outPath}" --no-playlist "${url}" 2>&1`
+            `yt-dlp \( {cookieArg} --extractor-args "youtube:player_client=android,web" -f ba/bestaudio -x --audio-format mp3 --audio-quality 0 -o " \){outPath}" --no-playlist --no-warnings --force-overwrites "${url}"`,
+            `yt-dlp \( {cookieArg} --extractor-args "youtube:player_client=ios" -f ba -x --audio-format mp3 -o " \){outPath}" --no-playlist --force-overwrites "${url}"`
         ];
-        for (let cmd of cmds) {
+        for (const cmd of cmds) {
             try {
                 await execPromise(cmd, { timeout: 120000 });
-                if (fs.existsSync(outPath) && fs.statSync(outPath).size > 5000) return true;
+                if (fs.existsSync(outPath) && fs.statSync(outPath).size > 8000) return true;
             } catch {}
         }
         return false;
     } catch { return false; }
+}
+
+// ── 2. SIPUTZX API (free, common in WA bots) ──
+async function getSiputzx(url) {
+    try {
+        const res = await axios.get(`https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(url)}`, {
+            timeout: 25000,
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
+        const d = res.data;
+        const link = d?.data?.dl || d?.data?.download || d?.result?.download || d?.result?.url || d?.download || d?.url;
+        if (link && String(link).startsWith('http')) return link;
+        return null;
+    } catch (e) {
+        console.log('[play] siputzx fail:', e.message?.slice(0, 60));
+        return null;
+    }
+}
+
+// ── 3. SAVEWAVE / public ytmp3 style ──
+async function getSavewave(url) {
+    try {
+        // endpoint style used by many free converters
+        const res = await axios.get(`https://api.nyxs.pw/dl/yt-mp3?url=${encodeURIComponent(url)}`, {
+            timeout: 20000,
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
+        const d = res.data;
+        const link = d?.result?.url || d?.result?.download || d?.data?.url || d?.url;
+        if (link && String(link).startsWith('http')) return link;
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+// ── 4. FALLBACK: another public endpoint ──
+async function getY2mateStyle(url) {
+    try {
+        const res = await axios.get(`https://api.agatz.xyz/api/ytmp3?url=${encodeURIComponent(url)}`, {
+            timeout: 20000,
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
+        const d = res.data;
+        const link = d?.data?.download || d?.data?.url || d?.result?.url || d?.url;
+        if (link && String(link).startsWith('http')) return link;
+        return null;
+    } catch {
+        return null;
+    }
 }
 
 module.exports = {
@@ -89,22 +106,28 @@ module.exports = {
     async execute(sock, msg, args, ctx) {
         const s = ctx.settings;
         const q = ctx.text;
-        if (!q) return ctx.reply(`❌ Usage: \`${s.prefix}play [song name]\`${s.FOOTER}`);
+        if (!q) return ctx.reply(`❌ Usage: \`\( {s.prefix}play [song name]\` \){s.FOOTER}`);
         await ctx.react('🎵');
 
         try {
             const { videos } = await yts(q);
             const video = videos?.[0];
-            if (!video) return ctx.reply(`❌ No results for *${q}*${s.FOOTER}`);
-            if (video.seconds > 600) return ctx.reply(`❌ Too long (${video.timestamp}). Max 10 min.${s.FOOTER}`);
+            if (!video) return ctx.reply(`❌ No results for *\( {q}* \){s.FOOTER}`);
+            if (video.seconds > 600) return ctx.reply(`❌ Too long (\( {video.timestamp}). Max 10 min. \){s.FOOTER}`);
 
-            const cleanUrl = video.url.replace(/youtube\.com\/shorts\//, 'youtube.com/watch?v=').split('&si=')[0].split('?si=')[0];
+            const cleanUrl = video.url
+                .replace(/youtube\.com\/shorts\//, 'youtube.com/watch?v=')
+                .split('&si=')[0]
+                .split('?si=')[0];
 
-            // Thumbnail
+            // Thumbnail + info
             try {
                 const ytId = (video.url.match(/(?:[?&]v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/) || [])[1];
                 if (ytId) {
-                    const thumb = await axios.get(`https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`, { responseType: 'arraybuffer', timeout: 8000 });
+                    const thumb = await axios.get(`https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`, {
+                        responseType: 'arraybuffer',
+                        timeout: 8000
+                    });
                     await sock.sendMessage(ctx.from, {
                         image: Buffer.from(thumb.data),
                         caption: menuBox('🎵', 'ᴘʟᴀʏ', [
@@ -122,7 +145,7 @@ module.exports = {
             let audioBuffer = null;
             let source = '';
 
-            // 1. TRY YT-DLP LOCAL FIRST (best quality)
+            // 1. yt-dlp first
             await ctx.react('⬇️');
             const ytdlpOk = await getYtDlp(cleanUrl, outPath);
             if (ytdlpOk) {
@@ -130,47 +153,54 @@ module.exports = {
                 source = 'yt-dlp';
             }
 
-            // 2. TRY COBALT API
+            // 2. Siputzx
             if (!audioBuffer) {
-                console.log('[play] trying cobalt');
-                const cobaltUrl = await getCobalt(cleanUrl);
-                if (cobaltUrl) {
+                console.log('[play] trying siputzx');
+                const link = await getSiputzx(cleanUrl);
+                if (link) {
                     try {
-                        audioBuffer = await downloadBuffer(cobaltUrl);
-                        source = 'cobalt';
+                        audioBuffer = await downloadBuffer(link);
+                        source = 'siputzx';
+                    } catch (e) {
+                        console.log('[play] siputzx download fail', e.message?.slice(0, 40));
+                    }
+                }
+            }
+
+            // 3. Nyxs
+            if (!audioBuffer) {
+                console.log('[play] trying nyxs');
+                const link = await getSavewave(cleanUrl);
+                if (link) {
+                    try {
+                        audioBuffer = await downloadBuffer(link);
+                        source = 'nyxs';
                     } catch {}
                 }
             }
 
-            // 3. TRY VEZON API
+            // 4. Agatz
             if (!audioBuffer) {
-                console.log('[play] trying vezon');
-                const vezonUrl = await getVezon(cleanUrl);
-                if (vezonUrl) {
+                console.log('[play] trying agatz');
+                const link = await getY2mateStyle(cleanUrl);
+                if (link) {
                     try {
-                        audioBuffer = await downloadBuffer(vezonUrl);
-                        source = 'vezon';
+                        audioBuffer = await downloadBuffer(link);
+                        source = 'agatz';
                     } catch {}
                 }
             }
 
-            // 4. TRY LOL API
-            if (!audioBuffer) {
-                console.log('[play] trying lolhuman');
-                const lolUrl = await getLol(cleanUrl);
-                if (lolUrl) {
-                    try {
-                        audioBuffer = await downloadBuffer(lolUrl);
-                        source = 'lolhuman';
-                    } catch {}
-                }
+            if (!audioBuffer || audioBuffer.length < 3000) {
+                return ctx.reply(
+                    `❌ Download failed — all sources blocked.\n\n` +
+                    `• yt-dlp: ${ytdlpOk ? 'file too small' : 'not installed / error'}\n` +
+                    `• siputzx / nyxs / agatz: failed\n\n` +
+                    `💡 Install yt-dlp + upload cookies.txt for best results.${s.FOOTER}`
+                );
             }
 
-            if (!audioBuffer || audioBuffer.length < 1000) {
-                return ctx.reply(`❌ Download failed — all 4 sources blocked.\n• yt-dlp: ${ytdlpOk ? 'ok but file small' : 'error/429'}\n• cobalt/vezon/lol: blocked\n\n💡 FIX: Upload cookies.txt to bot root. Then retry.${s.FOOTER}`);
-            }
-
-            console.log(`[play] success via ${source} - ${audioBuffer.length} bytes`);
+            console.log(`[play] success via ${source} — ${audioBuffer.length} bytes`);
 
             await sock.sendMessage(ctx.from, {
                 audio: audioBuffer,
@@ -194,7 +224,7 @@ module.exports = {
 
         } catch (err) {
             console.error('[play]', err);
-            ctx.reply(`❌ ${err.message.slice(0,150)}${s.FOOTER}`);
+            ctx.reply(`❌ \( {err.message?.slice(0, 150) || 'Unknown error'} \){s.FOOTER}`);
             ctx.react('❌').catch(() => {});
         }
     }
