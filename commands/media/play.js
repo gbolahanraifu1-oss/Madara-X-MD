@@ -12,89 +12,30 @@ function sc(str) {
     return String(str).toLowerCase().split('').map(c => m[c]||c).join('');
 }
 
-const AX = {
-    timeout: 25000,
-    headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/plain, */*'
-    }
-};
-
-async function downloadBuffer(url) {
+async function getElitePro(url) {
     try {
-        const r = await axios.get(url, {
+        const { data } = await axios.get(
+            `https://eliteprotech-apis.zone.id/download/ytmp3?url=${encodeURIComponent(url)}`,
+            { timeout: 25000 }
+        );
+
+        const link = data?.download?.downloadUrl || data?.downloadUrl || data?.url || data?.result?.url;
+        if (!link) return null;
+
+        console.log('[play] EliteProTech success');
+
+        const audio = await axios.get(link, {
             responseType: 'arraybuffer',
             timeout: 90000,
-            maxContentLength: Infinity,
-            headers: { 'User-Agent': AX.headers['User-Agent'], 'Accept': '*/*' }
+            maxContentLength: Infinity
         });
-        const buf = Buffer.from(r.data);
-        if (buf.length > 3000) return buf;
-    } catch {}
-    return null;
-}
 
-async function getAudioUrl(videoUrl) {
-    const enc = encodeURIComponent(videoUrl);
-
-    const apis = [
-        // EliteProTech
-        {
-            name: 'EliteProTech',
-            url: `https://eliteprotech-apis.zone.id/ytdown?url=${enc}&format=mp3`,
-            get: d => d?.downloadURL || d?.download_url || d?.url || d?.result?.url
-        },
-        // Siputzx
-        {
-            name: 'Siputzx',
-            url: `https://api.siputzx.my.id/api/d/ytmp3?url=${enc}`,
-            get: d => d?.data?.url || d?.data?.download || d?.result?.url
-        },
-        // Ryzen
-        {
-            name: 'Ryzen',
-            url: `https://api.ryzendesu.vip/api/downloader/ytmp3?url=${enc}`,
-            get: d => d?.url || d?.data?.url || d?.result?.url
-        },
-        // Vreden
-        {
-            name: 'Vreden',
-            url: `https://vreden.dimensionx.web.id/api/ytmp3?url=${enc}`,
-            get: d => d?.result?.download?.url || d?.result?.url || d?.url
-        },
-        // GiftedTech
-        {
-            name: 'GiftedTech',
-            url: `https://api.giftedtech.web.id/api/download/ytmp3?apikey=gifted&url=${enc}`,
-            get: d => d?.result?.dl_url || d?.result?.download_url || d?.result?.url
-        },
-        // Okatsu
-        {
-            name: 'Okatsu',
-            url: `https://okatsu-rolezapiiz.vercel.app/downloader/ytmp3?url=${enc}`,
-            get: d => d?.dl || d?.url || d?.result?.url
-        },
-        // Yupra
-        {
-            name: 'Yupra',
-            url: `https://api.yupra.my.id/api/downloader/ytmp3?url=${enc}`,
-            get: d => d?.data?.download_url || d?.data?.url
-        }
-    ];
-
-    for (const api of apis) {
-        try {
-            const { data } = await axios.get(api.url, AX);
-            const link = api.get(data);
-            if (link && link.startsWith('http')) {
-                console.log('[play] success via →', api.name);
-                return link;
-            }
-        } catch (e) {
-            console.log('[play] miss:', api.name, (e.message || '').slice(0, 60));
-        }
+        const buffer = Buffer.from(audio.data);
+        return buffer.length > 3000 ? buffer : null;
+    } catch (e) {
+        console.error('[play] EliteProTech error:', e.message?.slice(0, 100));
+        return null;
     }
-    return null;
 }
 
 module.exports = {
@@ -132,20 +73,17 @@ module.exports = {
 
             await ctx.react('⬇️');
 
-            const audioUrl = await getAudioUrl(video.url);
-            if (!audioUrl) {
+            const audioBuffer = await getElitePro(video.url);
+
+            if (!audioBuffer) {
                 return ctx.reply(`╭═══〘 𝑴𝑨𝑫𝑨𝑹𝑨 𝑿-𝑴𝑫 〙═══⊷❍
 ┃✰│━━━❮❮ 💬 ᴍᴀᴅᴀʀᴀ x-ᴍᴅ ❯❯━━━━━
-┃✰│❌ ᴅᴏᴡɴʟᴏᴀᴅ ꜰᴀɪʟᴇᴅ — ᴀʟʟ ᴀᴘɪs ʙʟᴏᴄᴋᴇᴅ
+┃✰│❌ ᴅᴏᴡɴʟᴏᴀᴅ ꜰᴀɪʟᴇᴅ
 ┃✰│
-┃✰│💡 ᴛʀʏ ᴀɢᴀɪɴ ʟᴀᴛᴇʀ ᴏʀ ᴜsᴇ ᴅɪғғᴇʀᴇɴᴛ sᴏɴɢ
+┃✰│ᴇʟɪᴛᴇᴘʀᴏᴛᴇᴄʜ ᴀᴘɪ ɴᴏᴛ ʀᴇsᴘᴏɴᴅɪɴɢ
+┃✰│ᴛʀʏ ᴀɢᴀɪɴ ʟᴀᴛᴇʀ
 ┃✰│> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴍᴀᴅᴀʀᴀ x-ᴍᴅ
 ╰──────────────────`);
-            }
-
-            const audioBuffer = await downloadBuffer(audioUrl);
-            if (!audioBuffer) {
-                return ctx.reply(`❌ Failed to download audio file.${s.FOOTER}`);
             }
 
             await sock.sendMessage(ctx.from, {
