@@ -81,7 +81,7 @@ module.exports = {
                 `│ ✅ *Intro Card Enabled*\n` +
                 `│ New members get a welcome ${hasVid ? 'video 🎬' : 'card 🖼️'} + short message.\n` +
                 (hasVid ? '' : `│ 💡 Tip: reply to a video with *.introcard video* to attach a welcome clip.\n`) +
-                `╰─⛧ 𝓹𝓪𝓼𝓺𝓪 𝓿𝓮𝓻𝓲𝓯𝓲𝓮𝓭`
+                `╰─⛧ 𝙼𝙰𝙳𝙰𝚁𝙰 𝚇-𝙼𝙳`
             );
         }
 
@@ -90,7 +90,7 @@ module.exports = {
             return reply(
                 `╭─❒ ◈ 𝙼𝙰𝙳𝙰𝚁𝙰 𝚇-𝙼𝙳 ❒\n` +
                 `│ ❌ *Intro Card Disabled*\n` +
-                `╰─⛧ 𝓹𝓪𝓼𝓺𝓪 𝓿𝓮𝓻𝓲𝓯𝓲𝓮𝓭`
+                `╰─⛧ 𝙼𝙰𝙳𝙰𝚁𝙰 𝚇-𝙼𝙳`
             );
         }
 
@@ -176,7 +176,7 @@ module.exports = {
                 `╭─❒ ◈ 𝙼𝙰𝙳𝙰𝚁𝙰 𝚇-𝙼𝙳 ❒\n` +
                 `│ ✅ *Intro Message Set*\n` +
                 `│ ${customMsg}\n` +
-                `╰─⛧ 𝓹𝓪𝓼𝓺𝓪 𝓿𝓮𝓻𝓲𝓯𝓲𝓮𝓭`
+                `╰─⛧ 𝙼𝙰𝙳𝙰𝚁𝙰 𝚇-𝙼𝙳`
             );
         }
 
@@ -244,7 +244,7 @@ module.exports = {
             `│ • .introcard color <light|dark|fire|ocean|royal>\n` +
             `│ • .introcard preview  (alias: .introcard test)\n` +
             `│ • .introcard reset\n` +
-            `╰─⛧ 𝓹𝓪𝓼𝓺𝓪 𝓿𝓮𝓻𝓲𝓯𝓲𝓮𝓭`
+            `╰─⛧ 𝙼𝙰𝙳𝙰𝚁𝙰 𝚇-𝙼𝙳`
         );
     },
 };
