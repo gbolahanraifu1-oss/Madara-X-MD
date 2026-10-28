@@ -6,22 +6,32 @@
 
 const http = require('http');
 const url  = require('url');
+const crypto = require('crypto');
 
 const PORT = parseInt(process.env.PORT || process.env.WEB_PORT || 24922, 10);
 
 const _pending  = new Map();
 const _warming  = new Map();
 
-const { activeSessions, getPairingCode } = require('./lib/pairManager');
+const { activeSessions, getPairingCode, hasRegisteredCredentials } = require('./lib/pairManager');
 const maintenance = require('./lib/maintenance');
 
 let _getOrCreateSock = null;
 let _clearSession    = null;
 
+function isSessionClearAuthorized(req) {
+    const expected = process.env.SESSION_CLEAR_TOKEN || '';
+    if (!expected) return { configured: false, authorized: false };
+    const supplied = String(req.headers['x-session-clear-token'] || '');
+    const expectedBytes = Buffer.from(expected);
+    const suppliedBytes = Buffer.from(supplied);
+    return { configured: true, authorized: expectedBytes.length === suppliedBytes.length && crypto.timingSafeEqual(expectedBytes, suppliedBytes) };
+}
+
 function setCors(res, methods = 'GET, POST, OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin',  '*');
     res.setHeader('Access-Control-Allow-Methods', methods);
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Session-Clear-Token');
     res.setHeader('Content-Type', 'application/json');
 }
 
@@ -67,7 +77,7 @@ async function handleRequest(req, res) {
         }
         if (!_warming.has(phone)) {
             console.log(`[WebPair] 🔥 Warming +${phone}`);
-            const p = _getOrCreateSock(phone, true).catch(() => null);
+            const p = _getOrCreateSock(phone, false).catch(() => null);
             _warming.set(phone, p);
             setTimeout(() => _warming.delete(phone), 90_000);
         }
@@ -77,6 +87,17 @@ async function handleRequest(req, res) {
     }
 
     if (pathname === '/session/clear' && req.method === 'POST') {
+        const clearAuth = isSessionClearAuthorized(req);
+        if (!clearAuth.configured) {
+            res.writeHead(503);
+            res.end(JSON.stringify({ error: 'Session clearing is disabled. Configure SESSION_CLEAR_TOKEN or use the owner-only Telegram unpair command.' }));
+            return;
+        }
+        if (!clearAuth.authorized) {
+            res.writeHead(403);
+            res.end(JSON.stringify({ error: 'Invalid session-clear authorization.' }));
+            return;
+        }
         const body  = await readBody(req);
         const phone = String(body.phone || parsed.query.phone || '').replace(/[^0-9]/g, '');
         if (!phone || phone.length < 7 || phone.length > 15) {
@@ -140,13 +161,18 @@ async function handleRequest(req, res) {
             return;
         }
 
-        // FIX: If same number requested again, delete existing creds and generate new
-        if (_pending.has(phone) || activeSessions.has(phone)) {
-            console.log(`[WebPair] ♻️  Re-pair for +${phone} — clearing old session`);
-            _pending.delete(phone);
-            _warming.delete(phone);
-            try { await _clearSession(phone); } catch {}
-            await new Promise(r => setTimeout(r, 1000));
+        // Never destroy an existing session just to issue another pairing code.
+        // Reuse unregistered sockets; registered sessions reconnect via /warm.
+        if (_pending.has(phone)) {
+            res.writeHead(409);
+            res.end(JSON.stringify({ error: 'A pairing request is already running for this number.', phone }));
+            return;
+        }
+        const currentSession = activeSessions.get(phone);
+        if (currentSession?.connected || currentSession?.registered || currentSession?.sock?.user?.id || hasRegisteredCredentials(phone)) {
+            res.writeHead(409);
+            res.end(JSON.stringify({ error: 'This number already has a linked WhatsApp session. Use /warm to reconnect; unlink it explicitly before pairing again.', phone, connected: Boolean(currentSession?.connected) }));
+            return;
         }
 
         console.log(`[WebPair] 📲 Pair requested for +${phone} (mode: ${mode})`);
@@ -158,12 +184,12 @@ async function handleRequest(req, res) {
                 responded = true;
                 _pending.delete(phone);
                 res.writeHead(504);
-                res.end(JSON.stringify({ error: 'Gateway timeout — bot did not receive a QR in time. Try again.', hint: `POST /session/clear { "phone": "${phone}" } then retry.` }));
+                res.end(JSON.stringify({ error: 'Pairing timed out. Existing session credentials were not cleared; retry when the connection is stable.' }));
             }
         }, 70_000);
 
         try {
-            const sockPromise = _warming.has(phone) ? _warming.get(phone) : _getOrCreateSock(phone, true);
+            const sockPromise = _warming.has(phone) ? _warming.get(phone) : _getOrCreateSock(phone, false);
             _warming.delete(phone);
 
             _pending.set(phone, true);
@@ -189,7 +215,7 @@ async function handleRequest(req, res) {
                 responded = true;
                 clearTimeout(httpTimer);
                 res.writeHead(500);
-                res.end(JSON.stringify({ error: err.message, hint: `POST /session/clear { "phone": "${phone}" } then retry.` }));
+                res.end(JSON.stringify({ error: err.message, hint: 'Existing session credentials were preserved. Only use an owner-authorized unpair action if you intend to unlink.' }));
             }
         }
         return;
