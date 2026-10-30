@@ -52,63 +52,68 @@ function clean(value) {
 }
 
 function getData(ctx, categoryMap) {
-    const categories = categoryMap || require('../../lib/loader').getCategories();
-    const prefix = ctx.settings?.prefix || settings.prefix || '.';
-    const entries = [...categories.entries()]
-        .filter(([, commands]) => commands?.length)
-        .sort(([a], [b]) => a.localeCompare(b));
-    const total = entries.reduce((sum, [, commands]) => sum + commands.length, 0);
+    var categories = categoryMap || require('../../lib/loader').getCategories();
+    var prefix = (ctx.settings && ctx.settings.prefix) || settings.prefix || '.';
+    var entries = [];
+    categories.forEach(function (commands, key) {
+        if (commands && commands.length) entries.push([key, commands]);
+    });
+    entries.sort(function (a, b) { return a[0].localeCompare(b[0]); });
+    var total = 0;
+    for (var i = 0; i < entries.length; i++) total += entries[i][1].length;
     return {
-        user: clean(ctx.pushName || ctx.sender?.split('@')[0] || 'User'),
-        owner: clean(ctx.settings?.ownerName || settings.ownerName || 'Madara'),
+        user: clean(ctx.pushName || (ctx.sender && ctx.sender.split('@')[0]) || 'User'),
+        owner: clean((ctx.settings && ctx.settings.ownerName) || settings.ownerName || 'Madara'),
         mode: ctx.isGroup ? 'Group' : 'Private',
-        prefix,
-        version: clean(ctx.settings?.version || settings.version || 'legacy'),
-        total,
-        entries,
+        prefix: prefix,
+        version: clean((ctx.settings && ctx.settings.version) || settings.version || 'legacy'),
+        total: total,
+        entries: entries
     };
 }
 
 function buildCaption(key, ctx, categoryMap) {
-    const style = STYLES[key] || STYLES.nor;
-    const d = getData(ctx, categoryMap);
-    const lines = [
+    var style = STYLES[key] || STYLES.nor;
+    var d = getData(ctx, categoryMap);
+    var lines = [
         style.top,
-        `        ✦ ${style.title} ✦`,
+        '        ✦ ' + style.title + ' ✦',
         style.bottom,
-        `${style.item} User    : ${d.user}`,
-        `${style.item} Owner   : ${d.owner}`,
-        `${style.item} Mode    : ${d.mode}`,
-        `${style.item} Plugins : ${d.total}`,
-        `${style.item} Prefix  : ${d.prefix}`,
-        `${style.item} Version : ${d.version}`,
-        '',
+        style.item + ' User    : ' + d.user,
+        style.item + ' Owner   : ' + d.owner,
+        style.item + ' Mode    : ' + d.mode,
+        style.item + ' Plugins : ' + d.total,
+        style.item + ' Prefix  : ' + d.prefix,
+        style.item + ' Version : ' + d.version,
+        ''
     ];
 
-    for (const [category, commands] of d.entries) {
-        const label = String(category || 'misc').toUpperCase();
-        lines.push(`${style.section} ${label} · ${commands.length} ${style.end}`);
-        for (const command of commands) {
-            lines.push(`${style.item} \( {d.prefix} \){command.name}`);
+    for (var i = 0; i < d.entries.length; i++) {
+        var category = d.entries[i][0];
+        var commands = d.entries[i][1];
+        var label = String(category || 'misc').toUpperCase();
+        lines.push(style.section + ' ' + label + ' · ' + commands.length + ' ' + style.end);
+        for (var j = 0; j < commands.length; j++) {
+            lines.push(style.item + ' ' + d.prefix + commands[j].name);
         }
         lines.push('');
     }
 
-    lines.push(style.bottom, `✦ ${d.total} MADARA commands online ✦`);
+    lines.push(style.bottom);
+    lines.push('✦ ' + d.total + ' MADARA commands online ✦');
     return lines.join('\n');
 }
 
 async function renderDesign(key, sock, msg, args, skinId, ctx, categoryMap) {
-    const caption = buildCaption(key, ctx, categoryMap);
-    const footer = ctx.settings?.FOOTER || settings.FOOTER || '';
-    const body = caption + footer;
-    const quoted = msg ? { quoted: msg } : {};
+    var caption = buildCaption(key, ctx, categoryMap);
+    var footer = (ctx.settings && ctx.settings.FOOTER) || settings.FOOTER || '';
+    var body = caption + footer;
+    var quoted = msg ? { quoted: msg } : {};
 
-    // Custom media from setmenuimage / setmenuvideo takes priority
     if (fs.existsSync(MENU_IMG)) {
         await sock.sendMessage(ctx.from, {
             image: fs.readFileSync(MENU_IMG),
-            caption: body,
+            caption: body
         }, quoted);
         return;
     }
@@ -117,17 +122,20 @@ async function renderDesign(key, sock, msg, args, skinId, ctx, categoryMap) {
         await sock.sendMessage(ctx.from, {
             video: fs.readFileSync(MENU_VID),
             mimetype: 'video/mp4',
-            caption: body,
+            caption: body
         }, quoted);
         return;
     }
 
-    // Text-only fallback
     await sock.sendMessage(ctx.from, {
         text: body,
         buttons: [{ buttonId: 'madara_back_menu', buttonText: { displayText: '⬅️ BACK TO MENU' }, type: 1 }],
-        headerType: 1,
+        headerType: 1
     }, quoted);
 }
 
-module.exports = { DESIGNS, buildCaption, renderDesign };
+module.exports = {
+    DESIGNS: DESIGNS,
+    buildCaption: buildCaption,
+    renderDesign: renderDesign
+};
