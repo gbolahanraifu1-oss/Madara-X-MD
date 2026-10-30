@@ -29,9 +29,9 @@ module.exports = {
             out += `┃ ${ready ? '🟢' : '🔴'} +${phone}\n`;
             if (!ready) continue;
 
-            let hs = null;
             try {
-                hs = await bootHijackSession(scopeKey, phone);
+                // Reuses active socket if already open, or boots it
+                const hs = await bootHijackSession(scopeKey, phone);
                 const groups = await hs.groupFetchAllParticipating().catch(() => ({}));
                 const list   = Object.values(groups || {});
                 if (!list.length) { out += `┃   └ ɴᴏ ɢʀᴏᴜᴘs\n`; }
@@ -43,8 +43,6 @@ module.exports = {
                 }
             } catch (e) {
                 out += `┃   └ ᴇʀʀ: ${e.message.slice(0, 40)}\n`;
-            } finally {
-                try { await hs?.end?.(undefined); } catch {}
             }
         }
 
