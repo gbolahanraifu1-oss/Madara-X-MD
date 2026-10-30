@@ -179,18 +179,6 @@ async function execute(sock, msg, args, ctx) {
         '╰──────────────────\n\n' +
         '*Q̲ᴜɪᴄᴋ:* ' + prefix + 'ʙᴏᴛᴍᴇɴᴜ | ' + prefix + 'ɢʀᴏᴜᴘᴍᴇɴᴜ | ' + prefix + 'ᴅʟᴍᴇɴᴜ';
 
-    if (fs.existsSync(MENU_AUDIO)) {
-        try {
-            await sock.sendMessage(ctx.from, {
-                audio: fs.readFileSync(MENU_AUDIO),
-                mimetype: 'audio/mpeg',
-                ptt: false
-            }, { quoted: msg });
-        } catch (e) {
-            console.log('[menu] audio send failed:', e.message);
-        }
-    }
-
     var headerMedia = await prepareMenuMedia(sock, ctx.sender);
 
     var categoryRows = Object.entries(getMenuCategoryCatalog()).map(function (entry) {
@@ -247,6 +235,7 @@ async function execute(sock, msg, args, ctx) {
         })
     }, { quoted: msg });
 
+    // 1) MENU FIRST
     await sock.relayMessage(ctx.from, menuMsg.message, {
         messageId: menuMsg.key.id,
         additionalNodes: [{
@@ -259,6 +248,19 @@ async function execute(sock, msg, args, ctx) {
             }]
         }]
     });
+
+    // 2) AUDIO AFTER MENU
+    if (fs.existsSync(MENU_AUDIO)) {
+        try {
+            await sock.sendMessage(ctx.from, {
+                audio: fs.readFileSync(MENU_AUDIO),
+                mimetype: 'audio/mpeg',
+                ptt: false
+            });
+        } catch (e) {
+            console.log('[menu] audio send failed:', e.message);
+        }
+    }
 }
 
 module.exports = {
