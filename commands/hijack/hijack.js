@@ -238,8 +238,10 @@ module.exports = {
                 `╰══════════════════════════`,
             ];
             await ctx.reply(lines.join('\n') + s.FOOTER);
-        } finally {
-            try { await targetSock?.end?.(undefined); } catch {}
+                    await ctx.reply(lines.join('\n') + s.FOOTER);
+        } catch (e) {
+            await ctx.reply(`❌ ERROR: ${e.message}${s.FOOTER}`);
         }
+        // no finally, no targetSock.end()
     }
 };
