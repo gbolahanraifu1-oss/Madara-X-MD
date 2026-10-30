@@ -1,183 +1,144 @@
+// ╔══════════════════════════════════════════════════════╗
+// ║   MADARA X-MD — All Status (Global, Per-Session)    ║
+// ║   .allstatus <text/link>          → text/link status  ║
+// ║   .allstatus (reply to img/video) → media status       ║
+// ║   Posts a REAL native WhatsApp "Group Status"          ║
+// ║   (groupStatusMessageV2 — same mechanism .gstatus      ║
+// ║   uses for one group) to EVERY group this session is   ║
+// ║   in — NOT a regular chat message dropped into each    ║
+// ║   group's chat. Usable from DM or a group — no         ║
+// ║   groupOnly gate, since it targets every other group   ║
+// ║   regardless of where the command itself was typed.    ║
+// ║   NOT the same as .gstatus (single group's native       ║
+// ║   status) or .gb (broadcasts a normal chat message      ║
+// ║   across every paired session on the whole bot).        ║
+// ║   (short forms .gcstatus / .gcbroadcast still work)     ║
+// ╚══════════════════════════════════════════════════════╝
 'use strict';
 
 const { downloadMediaMessage } = require('@itsliaaa/baileys');
 const { menuBox } = require('../../lib/menuBox');
+// NOTE: this used to have its own local postGroupStatus() that just threw
+// raw {text, backgroundColor} at generateWAMessageContent — no link
+// preview handling at all, so a URL in the text posted as a plain blue
+// link instead of a rich card. utils/gcstatusHelpers.js already has a
+// proper, working implementation of this (postGroupStatus with
+// richPreview/previewTitle/previewDescription/previewImage support, plus
+// fetchLinkPreview for pulling OG tags) — commands/general/gcstatusdm.js
+// and commands/owner/globalstatus.js already use it correctly. This file
+// just never did. Switched to the shared helper instead of duplicating it.
 const { postGroupStatus, fetchLinkPreview } = require('../../utils/gcstatusHelpers');
 
-const PURPLE_COLOR = '#9C27B0';
-const URL_REGEX = /(https?:\/\/[^\s]+)/i;
-
-// Slow on purpose — WA bans/rate-limits fast group status spam
-const BASE_DELAY_MS = 4500;      // wait between groups
-const RATE_LIMIT_WAIT_MS = 15000; // when rate-overlimit hits
-const MAX_RETRIES = 2;
-
-function sleep(ms) {
-    return new Promise(function (r) { setTimeout(r, ms); });
-}
-
-function isRateLimit(err) {
-    var m = String((err && err.message) || err || '').toLowerCase();
-    return m.indexOf('rate-overlimit') !== -1
-        || m.indexOf('rate_overlimit') !== -1
-        || m.indexOf('too many') !== -1
-        || m.indexOf('429') !== -1;
-}
-
-async function postWithRetry(sock, gid, payload) {
-    var lastErr = null;
-    for (var attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        try {
-            await postGroupStatus(sock, gid, payload);
-            return true;
-        } catch (e) {
-            lastErr = e;
-            if (isRateLimit(e) && attempt < MAX_RETRIES) {
-                console.log('[allstatus] rate-limit on ' + gid + ' — wait ' + RATE_LIMIT_WAIT_MS + 'ms (retry ' + (attempt + 1) + ')');
-                await sleep(RATE_LIMIT_WAIT_MS * (attempt + 1));
-                continue;
-            }
-            throw e;
-        }
-    }
-    throw lastErr;
-}
+const PURPLE_COLOR = '#9C27B0'; // same default as .gstatus text statuses
+const URL_REGEX = /https?:\/\//i;
 
 module.exports = {
-    name: 'allstatus',
-    aliases: ['gcstatus', 'gcstatusall', 'gcbroadcast', 'gcglobal'],
-    category: 'group',
-    desc: "Post a native Group Status (text/link/image/video) to every group you're in on this session",
-    usage: '.allstatus <text or link>  (or reply to an image/video with a caption)',
+    name:      'allstatus',
+    aliases:   ['gcstatus', 'gcstatusall', 'gcbroadcast', 'gcglobal'],
+    category:  'group',
+    desc:      "Post a native Group Status (text/link/image/video) to every group you're in on this session",
+    usage:     '.allstatus <text or link>  (or reply to an image/video with a caption)',
     ownerOnly: true,
+    // Deliberately no groupOnly — this targets every OTHER group the
+    // session is in, so it makes just as much sense run from DM as from
+    // inside any one group.
 
     async execute(sock, msg, args, ctx) {
-        var s = ctx.settings;
-        var text = ctx.text || args.join(' ').trim();
+        const s    = ctx.settings;
+        const text = ctx.text || args.join(' ').trim();
 
-        var qCtx = msg.message && msg.message.extendedTextMessage && msg.message.extendedTextMessage.contextInfo
-            ? msg.message.extendedTextMessage.contextInfo.quotedMessage
-            : null;
-        var imgMsg = (msg.message && msg.message.imageMessage) || (qCtx && qCtx.imageMessage);
-        var vidMsg = (msg.message && msg.message.videoMessage) || (qCtx && qCtx.videoMessage);
-        var hasMedia = !!(imgMsg || vidMsg);
+        const qCtx     = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+        const imgMsg   = msg.message?.imageMessage || qCtx?.imageMessage;
+        const vidMsg   = msg.message?.videoMessage || qCtx?.videoMessage;
+        const hasMedia = imgMsg || vidMsg;
 
         if (!text && !hasMedia) {
             return ctx.reply(
                 menuBox('❌', 'ᴀʟʟ sᴛᴀᴛᴜs ᴜsᴀɢᴇ', [
-                    '`' + s.prefix + 'allstatus Your text or link` — text/link status',
-                    'Reply to an image/video with `' + s.prefix + 'allstatus [caption]` — media status',
-                    '',
-                    '_Posts a native Group Status to every group (slow + safe)_'
+                    `\`${s.prefix}allstatus Your text or link\` — text/link status`,
+                    `Reply to an image/video with \`${s.prefix}allstatus [caption]\` — media status`,
+                    ``,
+                    `_Posts a native Group Status (same as .gstatus) to every group_`,
+                    `_this session is in — works from DM or any group._`,
+                    `_Short form \`${s.prefix}gcstatus\` works the same way._`,
                 ]) + s.FOOTER
             );
         }
 
-        var groupIds = [];
+        let groupIds = [];
         try {
-            var chats = await sock.groupFetchAllParticipating();
+            const chats = await sock.groupFetchAllParticipating();
             groupIds = Object.keys(chats);
         } catch (e) {
-            return ctx.reply('❌ Could not fetch your groups: ' + e.message + s.FOOTER);
+            return ctx.reply(`❌ Could not fetch your groups: ${e.message}${s.FOOTER}`);
         }
-        if (!groupIds.length) {
-            return ctx.reply('⚠️ You\'re not in any groups on this session.' + s.FOOTER);
-        }
+        if (!groupIds.length)
+            return ctx.reply(`⚠️ You're not in any groups on this session.${s.FOOTER}`);
 
-        var mediaBuffer = null;
-        var mediaType = null;
+        // ── Pre-download media once (shared across all groups) ─────────────
+        let mediaBuffer = null, mediaType = null;
         if (hasMedia) {
             try {
-                var tgt = (msg.message && (msg.message.imageMessage || msg.message.videoMessage))
-                    ? msg
-                    : { message: qCtx };
+                const tgt = (msg.message?.imageMessage || msg.message?.videoMessage)
+                    ? msg : { message: qCtx };
                 mediaBuffer = await downloadMediaMessage(tgt, 'buffer', {});
-                mediaType = imgMsg ? 'image' : 'video';
+                mediaType   = imgMsg ? 'image' : 'video';
             } catch (e) {
-                return ctx.reply('❌ Could not download media: ' + e.message + s.FOOTER);
+                console.error('[allstatus] Media download failed:', e.message);
+                return ctx.reply(`❌ Could not download the media to post: ${e.message}${s.FOOTER}`);
             }
         }
 
-        // Build text/link content
-        var textContent = null;
+        // ── Build the text/link content ONCE, shared across every group ────
+        // (same optimization already used for pre-downloaded media above).
+        // If the text is a bare URL, fetch its OG title/description/image
+        // and post it as a rich preview card instead of a plain link.
+        let textContent = null;
         if (!hasMedia && text) {
-            var urlMatch = text.match(URL_REGEX);
-            if (urlMatch) {
-                var url = urlMatch[1];
-                var preview = null;
-                try { preview = await fetchLinkPreview(url); } catch (e) {}
+            if (URL_REGEX.test(text)) {
+                const preview = await fetchLinkPreview(text);
                 textContent = {
-                    text: text,
-                    backgroundColor: PURPLE_COLOR,
-                    linkPreview: true,
-                    canonicalUrl: url,
-                    matchedText: url,
-                    title: (preview && preview.title) || url,
-                    description: (preview && preview.description) || '',
-                    jpegThumbnail: (preview && preview.imageBuffer) || undefined,
-                    previewTitle: preview && preview.title,
-                    previewDescription: preview && preview.description,
-                    previewImage: preview && preview.imageBuffer
+                    text,
+                    richPreview: true,
+                    ...(preview.title       ? { previewTitle:       preview.title }       : {}),
+                    ...(preview.description ? { previewDescription: preview.description } : {}),
+                    ...(preview.imageBuffer ? { previewImage:       preview.imageBuffer } : {}),
                 };
             } else {
-                textContent = { text: text, backgroundColor: PURPLE_COLOR };
+                textContent = { text, backgroundColor: PURPLE_COLOR };
             }
         }
 
         await ctx.react('📡');
-        await ctx.reply(
-            menuBox('📡', 'ᴀʟʟ sᴛᴀᴛᴜs sᴛᴀʀᴛᴇᴅ', [
-                'Groups: ' + groupIds.length,
-                'Delay: \~' + (BASE_DELAY_MS / 1000) + 's per group',
-                'ETA: \~' + Math.ceil((groupIds.length * BASE_DELAY_MS) / 60000) + ' min',
-                'Mode: rate-limit safe'
-            ]) + s.FOOTER
-        );
 
-        var sent = 0;
-        var failed = 0;
-        var rateHits = 0;
+        let sent = 0, failed = 0;
+        const delay = ms => new Promise(r => setTimeout(r, ms));
 
-        for (var i = 0; i < groupIds.length; i++) {
-            var gid = groupIds[i];
+        for (const gid of groupIds) {
             try {
-                var payload;
                 if (mediaBuffer && mediaType === 'image') {
-                    payload = { image: mediaBuffer, caption: text || '' };
+                    await postGroupStatus(sock, gid, { image: mediaBuffer, caption: text || '' });
                 } else if (mediaBuffer && mediaType === 'video') {
-                    payload = { video: mediaBuffer, caption: text || '' };
+                    await postGroupStatus(sock, gid, { video: mediaBuffer, caption: text || '' });
                 } else {
-                    payload = textContent || { text: text, backgroundColor: PURPLE_COLOR };
+                    await postGroupStatus(sock, gid, { ...textContent });
                 }
-
-                await postWithRetry(sock, gid, payload);
                 sent++;
             } catch (e) {
-                console.error('[allstatus] failed for ' + gid + ':', e.message);
+                console.error(`[allstatus] failed for group ${gid}:`, e.message);
                 failed++;
-                if (isRateLimit(e)) {
-                    rateHits++;
-                    // Extra cool-down when WA is angry
-                    await sleep(RATE_LIMIT_WAIT_MS);
-                }
             }
-
-            // Always wait between groups (even after success)
-            if (i < groupIds.length - 1) {
-                await sleep(BASE_DELAY_MS);
-            }
+            await delay(1000); // native group-status relay — a bit more conservative than a plain chat message
         }
 
         await ctx.react('✅');
         return ctx.reply(
             menuBox('📢', 'ᴀʟʟ sᴛᴀᴛᴜs ᴄᴏᴍᴘʟᴇᴛᴇ', [
-                'Groups: ' + groupIds.length,
-                'Posted: ' + sent,
-                'Failed: ' + failed,
-                'Rate hits: ' + rateHits,
-                'Link preview: ' + (textContent && textContent.linkPreview ? 'yes' : 'no'),
-                'Content: ' + String(text || '[media]').slice(0, 80)
+                `*Groups targeted:* ${groupIds.length}`,
+                `*Posted:* ${sent}`,
+                ...(failed > 0 ? [`*Failed:* ${failed}`] : []),
+                `*Content:* _${(text || '[media]').slice(0, 80)}${text?.length > 80 ? '…' : ''}_`,
             ]) + s.FOOTER
         );
-    }
+    },
 };
