@@ -6,6 +6,7 @@ const {
     addTarget,
     readTargets,
     hasCreds,
+    closePendingPairing,
 } = require('../../lib/hijackSession');
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -50,9 +51,14 @@ module.exports = {
         const scopeKey = ctx.sender;
         if (!scopeKey) return ctx.reply(`❌ sᴇɴᴅᴇʀ ᴜɴᴋɴᴏᴡɴ.${s.FOOTER}`);
 
-        if (readTargets(scopeKey).includes(raw)) {
-            return ctx.reply(`⚠️ +${raw} ᴀʟʀᴇᴀᴅʏ ɪɴ ʏᴏᴜʀ ʜɪᴊᴀᴄᴋ ʟɪsᴛ.${s.FOOTER}`);
+        // block ONLY if pairing is already done (creds.json exists).
+        // folder-only from .hijackadd is fine — that's the placeholder, not a pair.
+        if (hasCreds(scopeKey, raw)) {
+            return ctx.reply(`⚠️ +${raw} ᴀʟʀᴇᴀᴅʏ ᴘᴀɪʀᴇᴅ. ʀᴜɴ .hijacklist.${s.FOOTER}`);
         }
+
+        // kill any half-open pairing socket from a previous attempt on this phone
+        closePendingPairing(scopeKey, raw);
 
         await ctx.react?.('⏳');
 
