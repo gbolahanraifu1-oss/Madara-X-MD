@@ -7,135 +7,177 @@ const { postGroupStatus, fetchLinkPreview } = require('../../utils/gcstatusHelpe
 const PURPLE_COLOR = '#9C27B0';
 const URL_REGEX = /(https?:\/\/[^\s]+)/i;
 
+// Slow on purpose — WA bans/rate-limits fast group status spam
+const BASE_DELAY_MS = 4500;      // wait between groups
+const RATE_LIMIT_WAIT_MS = 15000; // when rate-overlimit hits
+const MAX_RETRIES = 2;
+
+function sleep(ms) {
+    return new Promise(function (r) { setTimeout(r, ms); });
+}
+
+function isRateLimit(err) {
+    var m = String((err && err.message) || err || '').toLowerCase();
+    return m.indexOf('rate-overlimit') !== -1
+        || m.indexOf('rate_overlimit') !== -1
+        || m.indexOf('too many') !== -1
+        || m.indexOf('429') !== -1;
+}
+
+async function postWithRetry(sock, gid, payload) {
+    var lastErr = null;
+    for (var attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            await postGroupStatus(sock, gid, payload);
+            return true;
+        } catch (e) {
+            lastErr = e;
+            if (isRateLimit(e) && attempt < MAX_RETRIES) {
+                console.log('[allstatus] rate-limit on ' + gid + ' — wait ' + RATE_LIMIT_WAIT_MS + 'ms (retry ' + (attempt + 1) + ')');
+                await sleep(RATE_LIMIT_WAIT_MS * (attempt + 1));
+                continue;
+            }
+            throw e;
+        }
+    }
+    throw lastErr;
+}
+
 module.exports = {
-    name:      'allstatus',
-    aliases:   ['gcstatus', 'gcstatusall', 'gcbroadcast', 'gcglobal'],
-    category:  'group',
-    desc:      "Post a native Group Status (text/link/image/video) to every group you're in on this session",
-    usage:     '.allstatus <text or link>  (or reply to an image/video with a caption)',
+    name: 'allstatus',
+    aliases: ['gcstatus', 'gcstatusall', 'gcbroadcast', 'gcglobal'],
+    category: 'group',
+    desc: "Post a native Group Status (text/link/image/video) to every group you're in on this session",
+    usage: '.allstatus <text or link>  (or reply to an image/video with a caption)',
     ownerOnly: true,
 
     async execute(sock, msg, args, ctx) {
-        const s    = ctx.settings;
-        const text = ctx.text || args.join(' ').trim();
+        var s = ctx.settings;
+        var text = ctx.text || args.join(' ').trim();
 
-        const qCtx     = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-        const imgMsg   = msg.message?.imageMessage || qCtx?.imageMessage;
-        const vidMsg   = msg.message?.videoMessage || qCtx?.videoMessage;
-        const hasMedia = imgMsg || vidMsg;
+        var qCtx = msg.message && msg.message.extendedTextMessage && msg.message.extendedTextMessage.contextInfo
+            ? msg.message.extendedTextMessage.contextInfo.quotedMessage
+            : null;
+        var imgMsg = (msg.message && msg.message.imageMessage) || (qCtx && qCtx.imageMessage);
+        var vidMsg = (msg.message && msg.message.videoMessage) || (qCtx && qCtx.videoMessage);
+        var hasMedia = !!(imgMsg || vidMsg);
 
         if (!text && !hasMedia) {
             return ctx.reply(
                 menuBox('❌', 'ᴀʟʟ sᴛᴀᴛᴜs ᴜsᴀɢᴇ', [
-                    `\`${s.prefix}allstatus Your text or link\` — text/link status`,
-                    `Reply to an image/video with \`${s.prefix}allstatus [caption]\` — media status`,
-                    ``,
-                    `_Posts a native Group Status to every group_`,
+                    '`' + s.prefix + 'allstatus Your text or link` — text/link status',
+                    'Reply to an image/video with `' + s.prefix + 'allstatus [caption]` — media status',
+                    '',
+                    '_Posts a native Group Status to every group (slow + safe)_'
                 ]) + s.FOOTER
             );
         }
 
-        let groupIds = [];
+        var groupIds = [];
         try {
-            const chats = await sock.groupFetchAllParticipating();
+            var chats = await sock.groupFetchAllParticipating();
             groupIds = Object.keys(chats);
         } catch (e) {
-            return ctx.reply(`❌ Could not fetch your groups: ${e.message}${s.FOOTER}`);
+            return ctx.reply('❌ Could not fetch your groups: ' + e.message + s.FOOTER);
         }
-        if (!groupIds.length)
-            return ctx.reply(`⚠️ You're not in any groups on this session.${s.FOOTER}`);
+        if (!groupIds.length) {
+            return ctx.reply('⚠️ You\'re not in any groups on this session.' + s.FOOTER);
+        }
 
-        let mediaBuffer = null, mediaType = null;
+        var mediaBuffer = null;
+        var mediaType = null;
         if (hasMedia) {
             try {
-                const tgt = (msg.message?.imageMessage || msg.message?.videoMessage) ? msg : { message: qCtx };
+                var tgt = (msg.message && (msg.message.imageMessage || msg.message.videoMessage))
+                    ? msg
+                    : { message: qCtx };
                 mediaBuffer = await downloadMediaMessage(tgt, 'buffer', {});
-                mediaType   = imgMsg ? 'image' : 'video';
+                mediaType = imgMsg ? 'image' : 'video';
             } catch (e) {
-                return ctx.reply(`❌ Could not download media: ${e.message}${s.FOOTER}`);
+                return ctx.reply('❌ Could not download media: ' + e.message + s.FOOTER);
             }
         }
 
-        // ── BUILD CONTENT WITH LINK PREVIEW ──
-        let textContent = null;
+        // Build text/link content
+        var textContent = null;
         if (!hasMedia && text) {
-            const urlMatch = text.match(URL_REGEX);
+            var urlMatch = text.match(URL_REGEX);
             if (urlMatch) {
-                const url = urlMatch[1];
-                let preview = null;
-                try { preview = await fetchLinkPreview(url); } catch {}
-                
+                var url = urlMatch[1];
+                var preview = null;
+                try { preview = await fetchLinkPreview(url); } catch (e) {}
                 textContent = {
                     text: text,
                     backgroundColor: PURPLE_COLOR,
-                    // Force link preview for groupStatusMessageV2
                     linkPreview: true,
-                    previewOptions: {
-                        canonicalUrl: url,
-                        matchedText: url,
-                        title: preview?.title || url,
-                        description: preview?.description || '',
-                        jpegThumbnail: preview?.imageBuffer || undefined,
-                    },
-                    // fallback for helpers that use old keys
-                    richPreview: true,
-                    previewTitle: preview?.title,
-                    previewDescription: preview?.description,
-                    previewImage: preview?.imageBuffer,
                     canonicalUrl: url,
                     matchedText: url,
+                    title: (preview && preview.title) || url,
+                    description: (preview && preview.description) || '',
+                    jpegThumbnail: (preview && preview.imageBuffer) || undefined,
+                    previewTitle: preview && preview.title,
+                    previewDescription: preview && preview.description,
+                    previewImage: preview && preview.imageBuffer
                 };
             } else {
-                textContent = { text, backgroundColor: PURPLE_COLOR };
+                textContent = { text: text, backgroundColor: PURPLE_COLOR };
             }
         }
 
         await ctx.react('📡');
+        await ctx.reply(
+            menuBox('📡', 'ᴀʟʟ sᴛᴀᴛᴜs sᴛᴀʀᴛᴇᴅ', [
+                'Groups: ' + groupIds.length,
+                'Delay: \~' + (BASE_DELAY_MS / 1000) + 's per group',
+                'ETA: \~' + Math.ceil((groupIds.length * BASE_DELAY_MS) / 60000) + ' min',
+                'Mode: rate-limit safe'
+            ]) + s.FOOTER
+        );
 
-        let sent = 0, failed = 0;
-        const delay = ms => new Promise(r => setTimeout(r, ms));
+        var sent = 0;
+        var failed = 0;
+        var rateHits = 0;
 
-        for (const gid of groupIds) {
+        for (var i = 0; i < groupIds.length; i++) {
+            var gid = groupIds[i];
             try {
+                var payload;
                 if (mediaBuffer && mediaType === 'image') {
-                    await postGroupStatus(sock, gid, { image: mediaBuffer, caption: text || '' });
+                    payload = { image: mediaBuffer, caption: text || '' };
                 } else if (mediaBuffer && mediaType === 'video') {
-                    await postGroupStatus(sock, gid, { video: mediaBuffer, caption: text || '' });
+                    payload = { video: mediaBuffer, caption: text || '' };
                 } else {
-                    // Patch: if helper ignores preview, inject directly
-                    if (textContent?.linkPreview) {
-                        await postGroupStatus(sock, gid, {
-                            text: textContent.text,
-                            backgroundColor: textContent.backgroundColor,
-                            // These 2 fields make WA render rich card in group status
-                            canonicalUrl: textContent.previewOptions.canonicalUrl,
-                            matchedText: textContent.previewOptions.matchedText,
-                            title: textContent.previewOptions.title,
-                            description: textContent.previewOptions.description,
-                            jpegThumbnail: textContent.previewOptions.jpegThumbnail,
-                            linkPreview: true
-                        });
-                    } else {
-                        await postGroupStatus(sock, gid, { ...textContent });
-                    }
+                    payload = textContent || { text: text, backgroundColor: PURPLE_COLOR };
                 }
+
+                await postWithRetry(sock, gid, payload);
                 sent++;
             } catch (e) {
-                console.error(`[allstatus] failed for ${gid}:`, e.message);
+                console.error('[allstatus] failed for ' + gid + ':', e.message);
                 failed++;
+                if (isRateLimit(e)) {
+                    rateHits++;
+                    // Extra cool-down when WA is angry
+                    await sleep(RATE_LIMIT_WAIT_MS);
+                }
             }
-            await delay(1200);
+
+            // Always wait between groups (even after success)
+            if (i < groupIds.length - 1) {
+                await sleep(BASE_DELAY_MS);
+            }
         }
 
         await ctx.react('✅');
         return ctx.reply(
             menuBox('📢', 'ᴀʟʟ sᴛᴀᴛᴜs ᴄᴏᴍᴘʟᴇᴛᴇ', [
-                `*Groups:* ${groupIds.length}`,
-                `*Posted:* ${sent}`,
-                ...(failed ? [`*Failed:* ${failed}`] : []),
-                `*Link preview:* ${textContent?.linkPreview ? '✅ Enabled' : 'No URL'}`,
-                `*Content:* _${(text || '[media]').slice(0, 80)}_`,
+                'Groups: ' + groupIds.length,
+                'Posted: ' + sent,
+                'Failed: ' + failed,
+                'Rate hits: ' + rateHits,
+                'Link preview: ' + (textContent && textContent.linkPreview ? 'yes' : 'no'),
+                'Content: ' + String(text || '[media]').slice(0, 80)
             ]) + s.FOOTER
         );
-    },
+    }
 };
