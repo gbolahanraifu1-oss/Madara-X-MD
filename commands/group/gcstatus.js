@@ -1,106 +1,92 @@
-// ╔══════════════════════════════════════════════════════╗
-// ║   MADARA X-MD — All Status (Global, Per-Session)    ║
-// ║   Clean link/text/media Group Status — no branding  ║
-// ╚══════════════════════════════════════════════════════╝
 'use strict';
 
-const crypto = require('crypto');
-const {
-    downloadMediaMessage,
-    generateWAMessageContent,
-    generateWAMessageFromContent,
-} = require('@itsliaaa/baileys');
+const { downloadMediaMessage } = require('@itsliaaa/baileys');
+const { menuBox } = require('../../lib/menuBox');
+const { postGroupStatus, fetchLinkPreview } = require('../../utils/gcstatusHelpers');
 
 const PURPLE_COLOR = '#9C27B0';
-
-// Detect pure / primarily-link text so we can strip any extra decoration
-function extractCleanLink(text) {
-    if (!text) return null;
-    const t = String(text).trim();
-    // Full URL as the whole message
-    const full = t.match(/^(https?:\/\/[^\s]+)$/i);
-    if (full) return full[1];
-    // First URL in the text (if user pasted link + extra lines)
-    const any = t.match(/(https?:\/\/[^\s]+)/i);
-    return any ? any[1] : null;
-}
-
-async function postGroupStatus(sock, jid, content) {
-    const { backgroundColor } = content;
-    delete content.backgroundColor;
-
-    const inside = await generateWAMessageContent(content, {
-        upload: sock.waUploadToServer,
-        backgroundColor: backgroundColor || PURPLE_COLOR,
-    });
-
-    const secret = crypto.randomBytes(32);
-    const waMsg = generateWAMessageFromContent(
-        jid,
-        {
-            messageContextInfo: { messageSecret: secret },
-            groupStatusMessageV2: {
-                message: { ...inside, messageContextInfo: { messageSecret: secret } },
-            },
-        },
-        {}
-    );
-
-    await sock.relayMessage(jid, waMsg.message, { messageId: waMsg.key.id });
-}
+const URL_REGEX = /(https?:\/\/[^\s]+)/i;
 
 module.exports = {
-    name: 'allstatus',
-    aliases: ['gcstatus', 'gcstatusall', 'gcbroadcast', 'gcglobal'],
-    category: 'group',
-    desc: "Post a native Group Status (text/link/image/video) to every group you're in on this session",
-    usage: '.allstatus <text or link>  (or reply to an image/video with a caption)',
+    name:      'allstatus',
+    aliases:   ['gcstatus', 'gcstatusall', 'gcbroadcast', 'gcglobal'],
+    category:  'group',
+    desc:      "Post a native Group Status (text/link/image/video) to every group you're in on this session",
+    usage:     '.allstatus <text or link>  (or reply to an image/video with a caption)',
     ownerOnly: true,
 
     async execute(sock, msg, args, ctx) {
-        const s = ctx.settings;
-        let text = (ctx.text || args.join(' ').trim() || '').trim();
+        const s    = ctx.settings;
+        const text = ctx.text || args.join(' ').trim();
 
-        const qCtx = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-        const imgMsg = msg.message?.imageMessage || qCtx?.imageMessage;
-        const vidMsg = msg.message?.videoMessage || qCtx?.videoMessage;
+        const qCtx     = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+        const imgMsg   = msg.message?.imageMessage || qCtx?.imageMessage;
+        const vidMsg   = msg.message?.videoMessage || qCtx?.videoMessage;
         const hasMedia = imgMsg || vidMsg;
 
         if (!text && !hasMedia) {
             return ctx.reply(
-                `❌ *Usage*\n\n` +
-                `\`${s.prefix}allstatus Your text or link\`\n` +
-                `Reply to image/video with \`${s.prefix}allstatus [caption]\`\n\n` +
-                `_Posts native Group Status to every group this session is in._`
+                menuBox('❌', 'ᴀʟʟ sᴛᴀᴛᴜs ᴜsᴀɢᴇ', [
+                    `\`${s.prefix}allstatus Your text or link\` — text/link status`,
+                    `Reply to an image/video with \`${s.prefix}allstatus [caption]\` — media status`,
+                    ``,
+                    `_Posts a native Group Status to every group_`,
+                ]) + s.FOOTER
             );
         }
-
-        // If it's a link, keep ONLY the clean URL so WhatsApp shows pure rich preview
-        // (no branding / menuBox / footer decoration under the preview)
-        const cleanLink = !hasMedia ? extractCleanLink(text) : null;
-        if (cleanLink) text = cleanLink;
 
         let groupIds = [];
         try {
             const chats = await sock.groupFetchAllParticipating();
             groupIds = Object.keys(chats);
         } catch (e) {
-            return ctx.reply(`❌ Could not fetch your groups: ${e.message}`);
+            return ctx.reply(`❌ Could not fetch your groups: ${e.message}${s.FOOTER}`);
         }
-        if (!groupIds.length) {
-            return ctx.reply(`⚠️ You're not in any groups on this session.`);
-        }
+        if (!groupIds.length)
+            return ctx.reply(`⚠️ You're not in any groups on this session.${s.FOOTER}`);
 
         let mediaBuffer = null, mediaType = null;
         if (hasMedia) {
             try {
-                const tgt = (msg.message?.imageMessage || msg.message?.videoMessage)
-                    ? msg : { message: qCtx };
+                const tgt = (msg.message?.imageMessage || msg.message?.videoMessage) ? msg : { message: qCtx };
                 mediaBuffer = await downloadMediaMessage(tgt, 'buffer', {});
-                mediaType = imgMsg ? 'image' : 'video';
+                mediaType   = imgMsg ? 'image' : 'video';
             } catch (e) {
-                console.error('[allstatus] Media download failed:', e.message);
-                return ctx.reply(`❌ Could not download the media: ${e.message}`);
+                return ctx.reply(`❌ Could not download media: ${e.message}${s.FOOTER}`);
+            }
+        }
+
+        // ── BUILD CONTENT WITH LINK PREVIEW ──
+        let textContent = null;
+        if (!hasMedia && text) {
+            const urlMatch = text.match(URL_REGEX);
+            if (urlMatch) {
+                const url = urlMatch[1];
+                let preview = null;
+                try { preview = await fetchLinkPreview(url); } catch {}
+                
+                textContent = {
+                    text: text,
+                    backgroundColor: PURPLE_COLOR,
+                    // Force link preview for groupStatusMessageV2
+                    linkPreview: true,
+                    previewOptions: {
+                        canonicalUrl: url,
+                        matchedText: url,
+                        title: preview?.title || url,
+                        description: preview?.description || '',
+                        jpegThumbnail: preview?.imageBuffer || undefined,
+                    },
+                    // fallback for helpers that use old keys
+                    richPreview: true,
+                    previewTitle: preview?.title,
+                    previewDescription: preview?.description,
+                    previewImage: preview?.imageBuffer,
+                    canonicalUrl: url,
+                    matchedText: url,
+                };
+            } else {
+                textContent = { text, backgroundColor: PURPLE_COLOR };
             }
         }
 
@@ -116,25 +102,40 @@ module.exports = {
                 } else if (mediaBuffer && mediaType === 'video') {
                     await postGroupStatus(sock, gid, { video: mediaBuffer, caption: text || '' });
                 } else {
-                    // Clean text / pure link only — no FOOTER, no menuBox
-                    await postGroupStatus(sock, gid, { text, backgroundColor: PURPLE_COLOR });
+                    // Patch: if helper ignores preview, inject directly
+                    if (textContent?.linkPreview) {
+                        await postGroupStatus(sock, gid, {
+                            text: textContent.text,
+                            backgroundColor: textContent.backgroundColor,
+                            // These 2 fields make WA render rich card in group status
+                            canonicalUrl: textContent.previewOptions.canonicalUrl,
+                            matchedText: textContent.previewOptions.matchedText,
+                            title: textContent.previewOptions.title,
+                            description: textContent.previewOptions.description,
+                            jpegThumbnail: textContent.previewOptions.jpegThumbnail,
+                            linkPreview: true
+                        });
+                    } else {
+                        await postGroupStatus(sock, gid, { ...textContent });
+                    }
                 }
                 sent++;
             } catch (e) {
-                console.error(`[allstatus] failed for group ${gid}:`, e.message);
+                console.error(`[allstatus] failed for ${gid}:`, e.message);
                 failed++;
             }
-            await delay(1000);
+            await delay(1200);
         }
 
         await ctx.react('✅');
-
-        // Simple confirmation — no menuBox branding
         return ctx.reply(
-            `✅ *All Status done*\n` +
-            `Groups: ${groupIds.length} | Posted: ${sent}` +
-            (failed ? ` | Failed: ${failed}` : '') +
-            `\nContent: ${(text || '[media]').slice(0, 60)}`
+            menuBox('📢', 'ᴀʟʟ sᴛᴀᴛᴜs ᴄᴏᴍᴘʟᴇᴛᴇ', [
+                `*Groups:* ${groupIds.length}`,
+                `*Posted:* ${sent}`,
+                ...(failed ? [`*Failed:* ${failed}`] : []),
+                `*Link preview:* ${textContent?.linkPreview ? '✅ Enabled' : 'No URL'}`,
+                `*Content:* _${(text || '[media]').slice(0, 80)}_`,
+            ]) + s.FOOTER
         );
     },
 };
