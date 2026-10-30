@@ -1,9 +1,9 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const settings = require('../../settings');
 
-// Ported from the linked menu design library. The excluded source-only
-// interactive and signature variants are intentionally not included here.
 const DESIGNS = [
     'nor', 'neon', 'classy', 'cyber', 'royal', 'ghost', 'matrix', 'samurai',
     'aurora', 'arcade', 'crimson', 'oracle', 'glitch', 'runic', 'obsidian',
@@ -43,6 +43,9 @@ const STYLES = {
     onyx:      { title: 'MADARA · ONYX', top: '> ┏❐  ⌜', bottom: '> ┗❐ ┈┈┈┈┈┈┈┈┈┈✧', item: '❐', section: '> ━━', end: '━━' },
     kord:      { title: 'MADARA · KORD', top: '┌────═━┈', bottom: '└───────═━┈┈━═──────┘', item: '│', section: '┏', end: '┕' },
 };
+
+const MENU_IMG = path.join(process.cwd(), 'assets', 'menuimage.jpg');
+const MENU_VID = path.join(process.cwd(), 'assets', 'menuvideo.mp4');
 
 function clean(value) {
     return String(value || '').replace(/\r?\n/g, ' ').trim();
@@ -86,7 +89,7 @@ function buildCaption(key, ctx, categoryMap) {
         const label = String(category || 'misc').toUpperCase();
         lines.push(`${style.section} ${label} · ${commands.length} ${style.end}`);
         for (const command of commands) {
-            lines.push(`${style.item} ${d.prefix}${command.name}`);
+            lines.push(`${style.item} \( {d.prefix} \){command.name}`);
         }
         lines.push('');
     }
@@ -98,11 +101,33 @@ function buildCaption(key, ctx, categoryMap) {
 async function renderDesign(key, sock, msg, args, skinId, ctx, categoryMap) {
     const caption = buildCaption(key, ctx, categoryMap);
     const footer = ctx.settings?.FOOTER || settings.FOOTER || '';
+    const body = caption + footer;
+    const quoted = msg ? { quoted: msg } : {};
+
+    // Custom media from setmenuimage / setmenuvideo takes priority
+    if (fs.existsSync(MENU_IMG)) {
+        await sock.sendMessage(ctx.from, {
+            image: fs.readFileSync(MENU_IMG),
+            caption: body,
+        }, quoted);
+        return;
+    }
+
+    if (fs.existsSync(MENU_VID)) {
+        await sock.sendMessage(ctx.from, {
+            video: fs.readFileSync(MENU_VID),
+            mimetype: 'video/mp4',
+            caption: body,
+        }, quoted);
+        return;
+    }
+
+    // Text-only fallback
     await sock.sendMessage(ctx.from, {
-        text: caption + footer,
+        text: body,
         buttons: [{ buttonId: 'madara_back_menu', buttonText: { displayText: '⬅️ BACK TO MENU' }, type: 1 }],
         headerType: 1,
-    }, msg ? { quoted: msg } : {});
+    }, quoted);
 }
 
 module.exports = { DESIGNS, buildCaption, renderDesign };
