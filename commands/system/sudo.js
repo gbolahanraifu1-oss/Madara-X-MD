@@ -17,114 +17,123 @@ function isLidJid(jid) {
     return String(jid || '').endsWith('@lid');
 }
 
-/**
- * Resolve mention/JID to real phone JID: 234xxx@s.whatsapp.net
- */
-async function resolveToPhoneJid(sock, ctx, rawJid) {
-    if (!rawJid) return null;
+/** Real phone only: 7–15 digits, reject obvious LID-length garbage when unresolved */
+function isRealPhone(num) {
+    if (!num || !/^[0-9]{7,15}$/.test(num)) return false;
+    // WhatsApp LIDs are often 15+ digit internal ids; Nigerian/mobile lines are typically 10–13 with country code
+    if (num.length > 15) return false;
+    return true;
+}
 
-    let num = normNum(rawJid);
-
-    try {
-        const resolved = resolveLid(num);
-        if (resolved && /^[0-9]{7,15}$/.test(resolved)) num = resolved;
-    } catch {}
-
-    if (ctx.isGroup && ctx.groupMeta?.participants) {
-        try {
-            cacheLidMappings(ctx.groupMeta.participants);
-            for (const p of ctx.groupMeta.participants) {
-                const pId = String(p.id || '');
-                const pLid = String(p.lid || '');
-                const pNum = normNum(pId);
-                const lNum = normNum(pLid);
-                if (
-                    pId === rawJid ||
-                    pLid === rawJid ||
-                    lNum === normNum(rawJid) ||
-                    pNum === normNum(rawJid)
-                ) {
-                    if (pId.includes('@s.whatsapp.net') && /^[0-9]{7,15}$/.test(pNum)) {
-                        num = pNum;
-                        break;
-                    }
-                    if (/^[0-9]{7,15}$/.test(pNum) && pNum.length >= 10) {
-                        num = pNum;
-                        break;
-                    }
-                    const fromCache = resolveLid(lNum) || resolveLid(pNum);
-                    if (fromCache && /^[0-9]{7,15}$/.test(fromCache)) {
-                        num = fromCache;
-                        break;
-                    }
-                }
-            }
-        } catch {}
-    }
-
-    if (ctx.isGroup && (!num || num.length < 10 || isLidJid(rawJid))) {
-        try {
-            const meta = await sock.groupMetadata(ctx.from);
-            cacheLidMappings(meta.participants || []);
-            for (const p of meta.participants || []) {
-                const pId = String(p.id || '');
-                const pLid = String(p.lid || '');
-                if (pId === rawJid || pLid === rawJid || normNum(pLid) === normNum(rawJid)) {
-                    const pNum = normNum(pId);
-                    if (pId.includes('@s.whatsapp.net') && pNum.length >= 10) {
-                        num = pNum;
-                        break;
-                    }
-                }
-            }
-            const cached = resolveLid(normNum(rawJid));
-            if (cached && cached.length >= 10) num = cached;
-        } catch {}
-    }
-
-    if (!num || num.length < 7) return null;
-    if (isLidJid(rawJid) && num === normNum(rawJid) && num.length > 15) return null;
-
+function toPhoneJid(num) {
     return num + '@s.whatsapp.net';
 }
 
-function normalizeStored(j) {
-    const n = normNum(j);
-    if (!n) return null;
-    let phone = n;
-    try {
-        const resolved = resolveLid(n);
-        if (resolved && resolved.length >= 10) phone = resolved;
-    } catch {}
-    if (phone.length < 7) return null;
-    return phone + '@s.whatsapp.net';
+function getSudoList(sessionPhone) {
+    return db.getSession(sessionPhone, 'config', 'sudo', []) || [];
 }
 
-function cleanSudoList(list) {
+function setSudoList(sessionPhone, list) {
+    db.setSession(sessionPhone, 'config', 'sudo', list);
+}
+
+function cleanList(list) {
     const seen = new Set();
     const out = [];
     for (const j of list || []) {
-        const n = normalizeStored(j);
-        if (!n) continue;
-        const num = normNum(n);
-        if (seen.has(num)) continue;
-        seen.add(num);
-        out.push(n);
+        const n = normNum(j);
+        if (!isRealPhone(n)) continue; // drop LIDs / junk
+        if (seen.has(n)) continue;
+        seen.add(n);
+        out.push(toPhoneJid(n));
     }
     return out;
+}
+
+async function resolveToPhoneJid(sock, ctx, rawJid) {
+    if (!rawJid) return null;
+
+    // Already a plain number argument
+    let num = normNum(rawJid);
+
+    // LID cache
+    try {
+        const resolved = resolveLid(num);
+        if (resolved && isRealPhone(resolved)) num = resolved;
+    } catch {}
+
+    // Group participants: prefer @s.whatsapp.net id over @lid
+    const scanParts = async (participants) => {
+        cacheLidMappings(participants || []);
+        for (const p of participants || []) {
+            const pId = String(p.id || '');
+            const pLid = String(p.lid || '');
+            if (
+                pId === rawJid ||
+                pLid === rawJid ||
+                normNum(pLid) === normNum(rawJid) ||
+                normNum(pId) === normNum(rawJid)
+            ) {
+                const pNum = normNum(pId);
+                if (pId.includes('@s.whatsapp.net') && isRealPhone(pNum)) return pNum;
+                const fromCache = resolveLid(normNum(pLid)) || resolveLid(pNum);
+                if (fromCache && isRealPhone(fromCache)) return fromCache;
+                if (isRealPhone(pNum) && !isLidJid(pId)) return pNum;
+            }
+        }
+        return null;
+    };
+
+    if (ctx.isGroup) {
+        let hit = null;
+        if (ctx.groupMeta?.participants) {
+            hit = await scanParts(ctx.groupMeta.participants);
+        }
+        if (!hit) {
+            try {
+                const meta = await sock.groupMetadata(ctx.from);
+                hit = await scanParts(meta.participants || []);
+            } catch {}
+        }
+        if (hit) num = hit;
+    }
+
+    // Quoted participant sometimes has real jid
+    try {
+        const q = msgParticipant(ctx);
+        if (q && normNum(q) === normNum(rawJid)) {
+            const qn = normNum(q);
+            if (isRealPhone(qn) && String(q).includes('@s.whatsapp.net')) num = qn;
+        }
+    } catch {}
+
+    if (!isRealPhone(num)) return null;
+    // If original was @lid and we never resolved to a different phone, reject
+    if (isLidJid(rawJid) && num === normNum(rawJid)) return null;
+
+    return toPhoneJid(num);
+}
+
+function msgParticipant(ctx) {
+    return ctx.msg?.message?.extendedTextMessage?.contextInfo?.participant || null;
 }
 
 module.exports = {
     name: 'sudo',
     aliases: ['addadmin', 'grantaccess', 'trusted'],
     category: 'system',
-    desc: 'Grant/revoke sudo (elevated) access to a user — they can use owner-level commands',
+    desc: 'Grant/revoke sudo per paired session — stores real phone numbers only',
     usage: '.sudo add @user | .sudo remove @user | .sudo list',
     ownerOnly: true,
 
     async execute(sock, msg, args, ctx) {
         const s = ctx.settings;
-        const themed = (key) => theme.string(ctx.sessionPhone, key, '');
+        const sessionPhone = ctx.sessionPhone;
+        if (!sessionPhone) {
+            return ctx.reply('❌ No session phone on this bot instance.' + s.FOOTER);
+        }
+
+        const themed = (key) => theme.string(sessionPhone, key, '');
         const sub = (args[0] || 'list').toLowerCase();
         const mentions = ctx.getMentions?.() || [];
 
@@ -134,14 +143,17 @@ module.exports = {
             if (digits) rawTarget = digits + '@s.whatsapp.net';
         }
 
-        let sudoList = cleanSudoList(db.get('system', 'sudo', []) || []);
+        // Always work on cleaned per-session list
+        let sudoList = cleanList(getSudoList(sessionPhone));
+        setSudoList(sessionPhone, sudoList); // migrate: strip old global LIDs from this session key
 
         if (sub === 'add') {
             if (!rawTarget) {
                 return ctx.reply(
-                    '❌ Tag a user or pass a number.\n`' +
-                    s.prefix + 'sudo add @user`\n`' +
-                    s.prefix + 'sudo add 2348012345678`' +
+                    '❌ Tag a user or pass a number.\n' +
+                    '`' + s.prefix + 'sudo add @user`\n' +
+                    '`' + s.prefix + 'sudo add 2348012345678`\n\n' +
+                    '_If tag fails (LID), use the full international number._' +
                     s.FOOTER
                 );
             }
@@ -149,8 +161,9 @@ module.exports = {
             const target = await resolveToPhoneJid(sock, ctx, rawTarget);
             if (!target) {
                 return ctx.reply(
-                    '❌ Could not resolve a real phone number from that tag (got LID only).\n' +
-                    'Use: `' + s.prefix + 'sudo add 234xxxxxxxxxx`' +
+                    '❌ Could not resolve a *real* phone number (WhatsApp sent a LID).\n' +
+                    'Use the number directly:\n' +
+                    '`' + s.prefix + 'sudo add 234xxxxxxxxxx`' +
                     s.FOOTER
                 );
             }
@@ -158,18 +171,18 @@ module.exports = {
             const targetNum = normNum(target);
             if (sudoList.some((j) => normNum(j) === targetNum)) {
                 return ctx.reply(
-                    '⚠️ @' + targetNum + ' already has sudo access.' + s.FOOTER,
+                    '⚠️ @' + targetNum + ' already has sudo on this session.' + s.FOOTER,
                     { mentions: [target] }
                 );
             }
 
             sudoList.push(target);
-            sudoList = cleanSudoList(sudoList);
-            db.set('system', 'sudo', sudoList);
+            sudoList = cleanList(sudoList);
+            setSudoList(sessionPhone, sudoList);
 
             return ctx.reply(
-                '✅ *' + (themed('sudo') || 'Sudo access granted.') + '*\n' +
-                '@' + targetNum + ' can now use elevated commands.' + s.FOOTER,
+                '✅ *' + (themed('sudo') || 'Sudo granted') + '* (this session only)\n' +
+                '@' + targetNum + '\n`' + targetNum + '`' + s.FOOTER,
                 { mentions: [target] }
             );
         }
@@ -178,65 +191,56 @@ module.exports = {
             if (!rawTarget) {
                 return ctx.reply(
                     '❌ Tag a user or pass a number.\n`' +
-                    s.prefix + 'sudo remove @user`' +
-                    s.FOOTER
+                    s.prefix + 'sudo remove 234xxxxxxxxxx`' + s.FOOTER
                 );
             }
 
             const target = await resolveToPhoneJid(sock, ctx, rawTarget);
             const targetNum = target ? normNum(target) : normNum(rawTarget);
+            if (!isRealPhone(targetNum)) {
+                return ctx.reply('❌ Invalid number.' + s.FOOTER);
+            }
 
             const before = sudoList.length;
             sudoList = sudoList.filter((j) => normNum(j) !== targetNum);
             if (sudoList.length === before) {
                 return ctx.reply(
-                    '❌ @' + targetNum + " doesn't have sudo access." + s.FOOTER,
-                    { mentions: target ? [target] : [] }
+                    '❌ `' + targetNum + '` is not in this session sudo list.' + s.FOOTER
                 );
             }
 
-            db.set('system', 'sudo', sudoList);
+            setSudoList(sessionPhone, sudoList);
             return ctx.reply(
-                '✅ *' + (themed('sudo') || 'Sudo access revoked.') + '*\n' +
-                '@' + targetNum + ' no longer has elevated access.' + s.FOOTER,
+                '✅ *' + (themed('sudo') || 'Sudo revoked') + '*\n`' + targetNum + '`' + s.FOOTER,
                 { mentions: target ? [target] : [] }
             );
         }
 
         if (sub === 'list') {
-            // Persist cleaned numbers (strip old LIDs)
-            const stored = db.get('system', 'sudo', []) || [];
-            if (sudoList.length !== stored.length) {
-                db.set('system', 'sudo', sudoList);
-            }
-
             if (!sudoList.length) {
                 return ctx.reply(
-                    '📋 *Sudo Users:* None\n\nGrant: `' +
-                    s.prefix + 'sudo add @user` or `' +
-                    s.prefix + 'sudo add 234...`' +
-                    s.FOOTER
+                    '📋 *Sudo Users (this session):* None\n\n' +
+                    '`' + s.prefix + 'sudo add 234...`' + s.FOOTER
                 );
             }
 
             const list = sudoList
-                .map((j, i) => (i + 1) + '. @' + normNum(j) + '  `' + normNum(j) + '`')
+                .map((j, i) => (i + 1) + '. @' + normNum(j) + '\n    `' + normNum(j) + '`')
                 .join('\n');
 
             return ctx.reply(
-                '👑 *Sudo Users (' + sudoList.length + '):*\n\n' +
-                list +
-                s.FOOTER,
+                '👑 *Sudo Users (' + sudoList.length + ')* — this session\n\n' +
+                list + s.FOOTER,
                 { mentions: sudoList }
             );
         }
 
         return ctx.reply(
             menuBox('👑', 'sᴜᴅᴏ', [
-                '`' + s.prefix + 'sudo add @user` — Grant (resolves to real number)',
-                '`' + s.prefix + 'sudo add 2348…` — Grant by number',
-                '`' + s.prefix + 'sudo remove @user` — Revoke',
-                '`' + s.prefix + 'sudo list` — Show sudo users (phone numbers)',
+                '`' + s.prefix + 'sudo add 234…` — Grant (real number)',
+                '`' + s.prefix + 'sudo add @user` — Grant if tag resolves',
+                '`' + s.prefix + 'sudo remove 234…` — Revoke',
+                '`' + s.prefix + 'sudo list` — List (per session)',
             ]) + s.FOOTER
         );
     },
