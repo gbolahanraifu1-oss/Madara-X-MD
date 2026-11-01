@@ -17,12 +17,8 @@ function isLidJid(jid) {
     return String(jid || '').endsWith('@lid');
 }
 
-/** Real phone only: 7–15 digits, reject obvious LID-length garbage when unresolved */
 function isRealPhone(num) {
-    if (!num || !/^[0-9]{7,15}$/.test(num)) return false;
-    // WhatsApp LIDs are often 15+ digit internal ids; Nigerian/mobile lines are typically 10–13 with country code
-    if (num.length > 15) return false;
-    return true;
+    return !!(num && /^[0-9]{7,15}$/.test(num));
 }
 
 function toPhoneJid(num) {
@@ -42,7 +38,7 @@ function cleanList(list) {
     const out = [];
     for (const j of list || []) {
         const n = normNum(j);
-        if (!isRealPhone(n)) continue; // drop LIDs / junk
+        if (!isRealPhone(n)) continue;
         if (seen.has(n)) continue;
         seen.add(n);
         out.push(toPhoneJid(n));
@@ -50,21 +46,34 @@ function cleanList(list) {
     return out;
 }
 
+async function tryOnWhatsApp(sock, jid) {
+    try {
+        const res = await sock.onWhatsApp(jid);
+        if (Array.isArray(res) && res[0]) {
+            const row = res[0];
+            if (row.jid) return row.jid;
+            if (row.exists && row.jid) return row.jid;
+        }
+    } catch {}
+    try {
+        const pn = await sock.signalRepository?.lidMapping?.getPNForLID?.(jid);
+        if (pn) return pn;
+    } catch {}
+    return null;
+}
+
 async function resolveToPhoneJid(sock, ctx, rawJid) {
     if (!rawJid) return null;
 
-    // Already a plain number argument
     let num = normNum(rawJid);
 
-    // LID cache
     try {
         const resolved = resolveLid(num);
         if (resolved && isRealPhone(resolved)) num = resolved;
     } catch {}
 
-    // Group participants: prefer @s.whatsapp.net id over @lid
-    const scanParts = async (participants) => {
-        cacheLidMappings(participants || []);
+    const scanParts = (participants) => {
+        try { cacheLidMappings(participants || []); } catch {}
         for (const p of participants || []) {
             const pId = String(p.id || '');
             const pLid = String(p.lid || '');
@@ -76,8 +85,10 @@ async function resolveToPhoneJid(sock, ctx, rawJid) {
             ) {
                 const pNum = normNum(pId);
                 if (pId.includes('@s.whatsapp.net') && isRealPhone(pNum)) return pNum;
-                const fromCache = resolveLid(normNum(pLid)) || resolveLid(pNum);
-                if (fromCache && isRealPhone(fromCache)) return fromCache;
+                try {
+                    const fromCache = resolveLid(normNum(pLid)) || resolveLid(pNum);
+                    if (fromCache && isRealPhone(fromCache)) return fromCache;
+                } catch {}
                 if (isRealPhone(pNum) && !isLidJid(pId)) return pNum;
             }
         }
@@ -85,44 +96,35 @@ async function resolveToPhoneJid(sock, ctx, rawJid) {
     };
 
     if (ctx.isGroup) {
-        let hit = null;
-        if (ctx.groupMeta?.participants) {
-            hit = await scanParts(ctx.groupMeta.participants);
-        }
+        let hit = ctx.groupMeta?.participants ? scanParts(ctx.groupMeta.participants) : null;
         if (!hit) {
             try {
                 const meta = await sock.groupMetadata(ctx.from);
-                hit = await scanParts(meta.participants || []);
+                hit = scanParts(meta.participants || []);
             } catch {}
         }
         if (hit) num = hit;
     }
 
-    // Quoted participant sometimes has real jid
-    try {
-        const q = msgParticipant(ctx);
-        if (q && normNum(q) === normNum(rawJid)) {
-            const qn = normNum(q);
-            if (isRealPhone(qn) && String(q).includes('@s.whatsapp.net')) num = qn;
+    if (!isRealPhone(num) || (isLidJid(rawJid) && num === normNum(rawJid))) {
+        const ow = await tryOnWhatsApp(sock, rawJid);
+        if (ow) {
+            const n = normNum(ow);
+            if (isRealPhone(n)) num = n;
         }
-    } catch {}
+    }
 
     if (!isRealPhone(num)) return null;
-    // If original was @lid and we never resolved to a different phone, reject
     if (isLidJid(rawJid) && num === normNum(rawJid)) return null;
 
     return toPhoneJid(num);
-}
-
-function msgParticipant(ctx) {
-    return ctx.msg?.message?.extendedTextMessage?.contextInfo?.participant || null;
 }
 
 module.exports = {
     name: 'sudo',
     aliases: ['addadmin', 'grantaccess', 'trusted'],
     category: 'system',
-    desc: 'Grant/revoke sudo per paired session — stores real phone numbers only',
+    desc: 'Grant/revoke sudo per paired session — real phone numbers only',
     usage: '.sudo add @user | .sudo remove @user | .sudo list',
     ownerOnly: true,
 
@@ -143,9 +145,8 @@ module.exports = {
             if (digits) rawTarget = digits + '@s.whatsapp.net';
         }
 
-        // Always work on cleaned per-session list
         let sudoList = cleanList(getSudoList(sessionPhone));
-        setSudoList(sessionPhone, sudoList); // migrate: strip old global LIDs from this session key
+        setSudoList(sessionPhone, sudoList);
 
         if (sub === 'add') {
             if (!rawTarget) {
@@ -162,8 +163,7 @@ module.exports = {
             if (!target) {
                 return ctx.reply(
                     '❌ Could not resolve a *real* phone number (WhatsApp sent a LID).\n' +
-                    'Use the number directly:\n' +
-                    '`' + s.prefix + 'sudo add 234xxxxxxxxxx`' +
+                    'Use: `' + s.prefix + 'sudo add 234xxxxxxxxxx`' +
                     s.FOOTER
                 );
             }
