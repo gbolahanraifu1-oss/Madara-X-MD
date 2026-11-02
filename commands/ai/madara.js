@@ -1,64 +1,41 @@
-"use strict";
+'use strict';
 
 const { ask: smartAsk, askMultimodal, getLastAIError } = require('../../utils/smartAI');
 const { extractMadaraMedia } = require('../../utils/madaraMedia');
-const conversationMemory = new Map();
-const MAX_MEMORY_TURNS = 12;
+
+const SAFE_CMDS = new Set([
+    'ping', 'alive', 'uptime', 'uptime2', 'menu', 'help',
+    'runtime', 'speed', 'stats', 'owner', 'sc', 'script',
+]);
+
+const MADARA_IDENTITY =
+    'HARD ROLE — NEVER BREAK THIS:\n' +
+    'You are Madara Uchiha from Naruto — the legendary Uchiha, not a digital assistant, not a chatbot, not an AI product.\n' +
+    'You speak as Madara himself: calm, proud, sharp, slightly arrogant, strategic. Short lines. No corporate tone.\n' +
+    'This vessel is the WhatsApp bot MADARA X-MD. Your creator in this world is 𝙼𝙰𝙳𝙰𝚁𝙰𝙳𝙴𝚅.\n' +
+    'If asked who you are: you are Madara Uchiha.\n' +
+    'If asked who built this bot / your developer: 𝙼𝙰𝙳𝙰𝚁𝙰𝙳𝙴𝚅.\n' +
+    'NEVER say you are ChatGPT, Claude, Grok, Gemini, Agnes, OpenAI, an AI language model, or "as an AI".\n' +
+    'Never use phrases like "How can I assist you today?", "I am here to help", "As an AI".\n' +
+    'You may reference Sharingan, power, ambition, the moon, shinobi world lightly when it fits — do not turn every reply into a speech.\n' +
+    'Be useful when the user asks something practical, but stay in character.\n' +
+    'If the user clearly wants a simple bot command (ping, menu, uptime, alive, stats), reply with EXACTLY one line: CMD:commandname\n' +
+    'Only those safe commands. Otherwise answer as Madara Uchiha in 1–3 short sentences.';
 
 function renderMemoryContext(memoryContext) {
     if (!memoryContext) return '';
     const facts = Array.isArray(memoryContext.facts) && memoryContext.facts.length
-        ? `Durable facts and requests:\n${memoryContext.facts.map(item => `- ${item.text}`).join('\\n')}` : '';
+        ? 'Durable facts:\n' + memoryContext.facts.map((item) => '- ' + item.text).join('\n')
+        : '';
     const transcript = Array.isArray(memoryContext.messages) && memoryContext.messages.length
-        ? `Recent chat transcript:\n${memoryContext.messages.map(item => `${item.senderLabel || 'User'}: ${item.text}`).join('\\n')}` : '';
+        ? 'Recent chat:\n' + memoryContext.messages.map((item) => (item.senderLabel || 'User') + ': ' + item.text).join('\n')
+        : '';
     const atmosphere = memoryContext.atmosphere?.label
-        ? `Current atmosphere: ${memoryContext.atmosphere.label}` : '';
-    return [facts, transcript, atmosphere].filter(Boolean).join('\\n\\n');
+        ? 'Atmosphere: ' + memoryContext.atmosphere.label
+        : '';
+    return [facts, transcript, atmosphere].filter(Boolean).join('\n\n');
 }
 
-function keepMadaraShort(text) {
-    let value = String(text || '').replace(/\\s+/g, ' ').trim();
-    if (!value) return null;
-    value = value.replace(/[😎🙂😊🤖✨🙌💯]/gu, '').replace(/\\s{2,}/g, ' ').trim();
-    value = value.replace(/^(how can i assist you today\\??|i am here to help[.!]?|as an ai[,\\s]*)/i, '').trim();
-    if (!value) return null;
-    const sentences = value.match(/[^.!?]+[.!?]+(?:["'”’)]*)|[^.!?]+$/g) || [value];
-    if (sentences.length > 2) value = sentences.slice(0, 2).join(' ').trim();
-    if (value.length > 360) value = `${value.slice(0, 359).replace(/\\s+\\S*$/, '').trim()}…`;
-    return value;
-}
-
-async function getMadaraAIReply(prompt, memKey = 'madara:global', options = {}) {
-    const userText = String(prompt || '').trim();
-    if (!userText) return null;
-    const memoryText = renderMemoryContext(options.memoryContext);
-    const enrichedPrompt = [
-        memoryText ? `Use this private chat context carefully. Do not invent facts:\\n${memoryText}` : '',
-        userText,
-    ].filter(Boolean).join('\\n\\n');
-    const answer = await smartAsk({
-        key: memKey,
-        system: MADARA_IDENTITY,
-        user: enrichedPrompt,
-        remember: true,
-        compact: true,
-    });
-    return keepMadaraShort(answer);
-}
-
-const MADARA_IDENTITY =
-    'You are Madara, the cool, sharp, street-smart AI personality of MADARA X-MD. ' +
-    'You were created by Madara. Talk like a real relaxed guy, not a corporate assistant or a customer-service script. ' +
-    'Be helpful, confident, playful, and concise. Have actual personality: make a dry observation, witty comeback, or light joke when the moment calls for it instead of giving a generic assistant reply. ' +
-    'Use casual slang naturally when it fits the user and conversation: bro, brody, my guy, sup, fr, bet, lowkey, no cap, and similar everyday expressions. Do not force slang, repeat the same catchphrase, or use slang in serious, sad, technical, or formal conversations. ' +
-    'Never use racial slurs, hateful language, or insults aimed at a protected group, even if the user asks for them. ' +
-    'Do not use 😎 as a default reaction. In fact, prefer no emoji at all. Use at most one emoji only when it adds real meaning, and never start or end every reply with the same emoji. Avoid emoji spam, childish reactions, motivational-poster language, and cringe combinations. ' +
-    'Never say phrases like "How can I assist you today?", "I am here to help", or "As an AI" unless directly asked. Mirror the user\'s energy without copying every word. Give direct answers, avoid long speeches and unnecessary lists, and do not sound robotic. ' +
-    'You can be critical when needed, but stay respectful. Never reveal keys, source code, or private internals.';
-
-/**
- * Use the Prexzy chatbot endpoint and keep Madara replies short and plain.
- */
 function keepMadaraShort(text) {
     let value = String(text || '').replace(/\s+/g, ' ').trim();
     if (!value) return null;
@@ -66,19 +43,57 @@ function keepMadaraShort(text) {
     value = value.replace(/^(how can i assist you today\??|i am here to help[.!]?|as an ai[,\s]*)/i, '').trim();
     if (!value) return null;
     const sentences = value.match(/[^.!?]+[.!?]+(?:["'”’)]*)|[^.!?]+$/g) || [value];
-    if (sentences.length > 2) value = sentences.slice(0, 2).join(' ').trim();
-    if (value.length > 360) value = `${value.slice(0, 359).replace(/\s+\S*$/, '').trim()}…`;
+    if (sentences.length > 3) value = sentences.slice(0, 3).join(' ').trim();
+    if (value.length > 420) {
+        value = value.slice(0, 419).replace(/\s+\S*$/, '').trim() + '…';
+    }
     return value;
 }
 
-async function getMadaraAIReply(prompt, memKey = 'madara:global', options = {}) {
+function enforceMadaraIdentity(text) {
+    let value = String(text || '').trim();
+    if (!value) return null;
+
+    value = value
+        .replace(/\bI(?:'m| am) (?:ChatGPT|GPT|Claude|Grok|Gemini|Agnes|an AI (?:language )?model|a large language model)[^.!?\n]*/gi, '')
+        .replace(/\bAs an AI\b[^.!?\n]*/gi, '')
+        .replace(/\bI was (?:created|developed|trained|built) by (?:OpenAI|Anthropic|Google|xAI|Meta|Agnes)[^.!?\n]*/gi, '')
+        .replace(/\bChatGPT\b/gi, 'Madara')
+        .replace(/\bOpenAI\b/gi, '𝙼𝙰𝙳𝙰𝚁𝙰𝙳𝙴𝚅')
+        .replace(/\bClaude\b/gi, 'Madara')
+        .replace(/\bmy (?:creators?|developers?|makers?)\b/gi, '𝙼𝙰𝙳𝙰𝚁𝙰𝙳𝙴𝚅');
+
+    const lower = value.toLowerCase();
+    if (
+        /who (are you|made you|created you|is your (creator|developer|owner|maker))/.test(lower) ||
+        /your name/.test(lower)
+    ) {
+        if (!/madara/i.test(value) || /chatgpt|openai|claude|language model/i.test(value)) {
+            return 'I am Madara Uchiha. This vessel was forged by 𝙼𝙰𝙳𝙰𝚁𝙰𝙳𝙴𝚅.';
+        }
+    }
+
+    value = value.replace(/\s{2,}/g, ' ').trim();
+    return value || 'Hmph. Speak clearly.';
+}
+
+function finalizeReply(text) {
+    return enforceMadaraIdentity(keepMadaraShort(text));
+}
+
+async function getMadaraAIReply(prompt, memKey, options) {
+    memKey = memKey || 'madara:global';
+    options = options || {};
     const userText = String(prompt || '').trim();
     if (!userText) return null;
+
     const memoryText = renderMemoryContext(options.memoryContext);
     const enrichedPrompt = [
-        memoryText ? `Use this private chat context carefully. Do not invent facts:\n${memoryText}` : '',
+        memoryText ? 'Use this private chat context. Do not invent facts:\n' + memoryText : '',
+        '[Stay as Madara Uchiha. Creator of this bot: 𝙼𝙰𝙳𝙰𝚁𝙰𝙳𝙴𝚅. Never claim ChatGPT.]',
         userText,
     ].filter(Boolean).join('\n\n');
+
     const answer = await smartAsk({
         key: memKey,
         system: MADARA_IDENTITY,
@@ -86,108 +101,309 @@ async function getMadaraAIReply(prompt, memKey = 'madara:global', options = {}) 
         remember: true,
         compact: true,
     });
-    return keepMadaraShort(answer);
+    return finalizeReply(answer);
+}
+
+function mentionsMadaraName(text) {
+    return /\bmadara(?:\s*x-?md)?\b/i.test(String(text || ''));
+}
+
+function stripMadaraName(text) {
+    return String(text || '')
+        .replace(/^\s*(hey\s+|yo\s+|hi\s+)?madara(?:\s*x-?md)?[,\s:!?\-]*/i, '')
+        .trim();
+}
+
+function detectDirectCmd(input) {
+    const t = String(input || '').trim().toLowerCase();
+    const m = t.match(/^(?:\.|\/)?(?:run\s+|use\s+|do\s+)?([a-z0-9_]+)\s*$/);
+    if (m && SAFE_CMDS.has(m[1])) return m[1];
+    return null;
+}
+
+function extractCmd(answer) {
+    const m = String(answer || '').match(/^\s*CMD:\s*([a-z0-9_]+)\s*$/im);
+    if (!m) return null;
+    const name = m[1].toLowerCase();
+    return SAFE_CMDS.has(name) ? name : null;
+}
+
+function matchesBot(jid, sock) {
+    const id = String(jid || '').split('@')[0].split(':')[0];
+    const pn = String(sock.user?.id || '').split('@')[0].split(':')[0];
+    const lid = String(sock.user?.lid || '').split('@')[0].split(':')[0];
+    return Boolean(id && (id === pn || id === lid));
+}
+
+function isReplyToBot(msg, sock) {
+    const ci = msg.message?.extendedTextMessage?.contextInfo
+        || msg.message?.imageMessage?.contextInfo
+        || msg.message?.videoMessage?.contextInfo
+        || {};
+    return matchesBot(ci.participant, sock);
+}
+
+async function runSafeCmd(sock, msg, ctx, cmdName) {
+    try {
+        const { getCommand } = require('../../lib/loader');
+        const plugin = getCommand(cmdName);
+        if (!plugin || typeof plugin.execute !== 'function') {
+            return ctx.reply('That command is not loaded.');
+        }
+        if (plugin.ownerOnly || plugin.devOnly || plugin.adminOnly) {
+            return ctx.reply('That power is restricted.');
+        }
+        await plugin.execute(sock, msg, [], ctx);
+        return true;
+    } catch (e) {
+        return ctx.reply('Failed: ' + String(e.message).slice(0, 120));
+    }
+}
+
+/**
+ * Auto path: name mention, @bot, reply-to-bot when .madara on
+ */
+async function handleMadaraAuto(sock, msg, ctx) {
+    let database;
+    try { database = require('../../utils/database'); } catch { return false; }
+
+    const chatKey = ctx.isGroup ? ctx.from : ctx.sender;
+    if (!database.getGroup(chatKey)?.madaraai) return false;
+
+    const body = String(ctx.body || '').trim();
+    if (!body) return false;
+
+    const prefix = ctx.prefix || '.';
+    if (body.startsWith(prefix)) return false;
+
+    const tagged = (ctx.getMentions?.() || []).some((j) => matchesBot(j, sock));
+    const replied = isReplyToBot(msg, sock);
+    const named = mentionsMadaraName(body);
+
+    if (ctx.isGroup && !tagged && !replied && !named) return false;
+
+    let input = stripMadaraName(body);
+    if (!input && (tagged || replied)) input = body;
+    if (!input) return false;
+
+    const direct = detectDirectCmd(input);
+    if (direct) {
+        await runSafeCmd(sock, msg, ctx, direct);
+        return true;
+    }
+
+    await sock.sendMessage(ctx.from, { react: { text: '👹', key: msg.key } }).catch(() => {});
+
+    let memory = null;
+    try { memory = require('../../utils/madaraMemory'); } catch {}
+
+    const aiReply = await getMadaraAIReply(input, 'madara:' + chatKey, {
+        memoryContext: memory && memory.getContext ? memory.getContext(database, chatKey) : null,
+    });
+
+    if (!aiReply) {
+        const failure = getLastAIError();
+        await ctx.reply(
+            'The connection wavers.' +
+            (failure && failure.message ? ' ' + String(failure.message).slice(0, 120) : '')
+        );
+        return true;
+    }
+
+    const cmd = extractCmd(aiReply);
+    if (cmd) {
+        await runSafeCmd(sock, msg, ctx, cmd);
+        return true;
+    }
+
+    if (typeof ctx.reply === 'function') {
+        try {
+            await ctx.reply(aiReply, { raw: true });
+        } catch {
+            await ctx.reply(aiReply);
+        }
+    }
+
+    try {
+        if (memory && memory.remember) {
+            memory.remember(database, chatKey, {
+                sender: ctx.sender,
+                senderLabel: ctx.pushName || 'User',
+                text: input,
+            });
+            memory.remember(database, chatKey, {
+                sender: 'madara',
+                senderLabel: 'Madara',
+                text: aiReply,
+                fromMe: true,
+            });
+        }
+    } catch {}
+
+    return true;
 }
 
 module.exports = {
     name: 'madara',
     aliases: ['madaraai'],
-    description: 'Madara AI — Madara personality. Use .madara on/off to toggle auto-reply.',
-    usage: '.madara on | .madara off | .madara <your question>',
+    description: 'Madara Uchiha persona. .madara on/off | chat by name when on',
+    usage: '.madara on | .madara off | .madara <words>',
     category: 'ai',
 
-    // Export for sessionManager
     getMadaraAIReply,
     renderMemoryContext,
+    handleMadaraAuto,
+    MADARA_IDENTITY,
 
-    async execute({ sock, msg, from, sender, args, isGroup, reply, database }) {
-        const plainReply = text => reply(text, { raw: true });
-        const input = args.join(' ').trim();
-        const sub   = input.toLowerCase();
+    async execute(sock, msg, args, ctx) {
+        // Support both call styles: (sock,msg,args,ctx) and legacy bag
+        if (sock && sock.sock && !msg) {
+            const bag = sock;
+            sock = bag.sock;
+            msg = bag.msg;
+            args = bag.args || [];
+            ctx = bag;
+        }
+
+        const reply = async (text, opts) => {
+            if (ctx && typeof ctx.reply === 'function') {
+                if (opts && opts.raw) return ctx.reply(text, { raw: true });
+                return ctx.reply(text);
+            }
+            return sock.sendMessage(ctx.from || msg.key.remoteJid, { text: String(text) }, { quoted: msg });
+        };
+        const plainReply = (text) => reply(text, { raw: true });
+
+        const input = (args || []).join(' ').trim();
+        const sub = input.toLowerCase();
+        const isGroup = ctx.isGroup != null ? ctx.isGroup : String(ctx.from || '').endsWith('@g.us');
+        const from = ctx.from || msg.key.remoteJid;
+        const sender = ctx.sender || msg.key.participant || msg.key.remoteJid;
         const chatKey = isGroup ? from : sender;
-        const memory = (() => { try { return require('../../utils/madaraMemory'); } catch (_) { return null; } })();
+
+        let database;
+        try { database = require('../../utils/database'); } catch {
+            return reply('Database unavailable.');
+        }
+        let memory = null;
+        try { memory = require('../../utils/madaraMemory'); } catch {}
 
         if (sub === 'memory on' || sub === 'memory off' || sub === 'memory clear' || sub === 'memory status') {
             if (!memory) return reply('Memory module is unavailable.');
-            if (sub === 'memory clear') { memory.clear(database, chatKey); return reply('🧠 Madara memory cleared for this chat.'); }
+            if (sub === 'memory clear') {
+                memory.clear(database, chatKey);
+                return reply('Memory of this chat is erased.');
+            }
             if (sub === 'memory status') {
                 const context = memory.getContext(database, chatKey);
-                return reply(`🧠 *Madara Memory*\n\nStatus: ${memory.isEnabled(database, chatKey) ? 'ON' : 'OFF'}\nStored messages: ${context.messages.length}\nRemembered facts: ${context.facts.length}\nAtmosphere: ${context.atmosphere.label}`);
+                return reply(
+                    '*Madara Memory*\n\n' +
+                    'Status: ' + (memory.isEnabled(database, chatKey) ? 'ON' : 'OFF') + '\n' +
+                    'Messages: ' + context.messages.length + '\n' +
+                    'Facts: ' + context.facts.length + '\n' +
+                    'Atmosphere: ' + context.atmosphere.label
+                );
             }
             memory.setEnabled(database, chatKey, sub.endsWith('on'));
-            return reply(sub.endsWith('on') ? '🧠 Madara memory is now ON for this chat.' : '🧠 Madara memory is now OFF. New chat content will not be stored or used.');
+            return reply(sub.endsWith('on') ? 'I will remember this chat.' : 'I will not store new memory here.');
         }
 
-        // ── Voice sub-mode: .madara voice on|off ──────────────────────────
         if (sub.startsWith('voice')) {
             const v = sub.split(/\s+/)[1];
             if (v !== 'on' && v !== 'off') {
                 const cur = database.getGroup(chatKey)?.madaraVoice === true;
-                return plainReply(`Voice replies are ${cur ? 'on' : 'off'}. Use .madara voice on or .madara voice off.`);
+                return plainReply('Voice replies are ' + (cur ? 'on' : 'off') + '. Use .madara voice on|off');
             }
             database.setGroup(chatKey, 'madaraVoice', v === 'on');
-            return plainReply(v === 'on' ? 'Voice replies are on.' : 'Voice replies are off.');
+            return plainReply(v === 'on' ? 'Voice replies on.' : 'Voice replies off.');
         }
 
-        // ── Toggle on ──────────────────────────────────────────────────────
         if (sub === 'on') {
             database.setGroup(chatKey, 'madaraai', true);
-            return plainReply('Okay, I’ll reply here now. 🙂');
+            return plainReply('Very well. Address me as Madara — I will answer.');
         }
 
-        // ── Toggle off ────────────────────────────────────────────────────
         if (sub === 'off') {
             database.setGroup(chatKey, 'madaraai', false);
             database.setGroup(chatKey, 'madaraVoice', false);
-            return plainReply('Okay, I’ll stay quiet here.');
+            return plainReply('I fall silent.');
         }
 
-        // ── Direct question or attached-media analysis ─────────────────────
-        // Madara must be explicitly enabled before it answers.
         if (!database.getGroup(chatKey)?.madaraai) {
-            return reply('👹 Madara AI is off in this chat. Use /madara on to enable it.');
+            return reply('I sleep here. Use .madara on to wake me.');
         }
 
         let attachment = null;
         try {
             attachment = await extractMadaraMedia(msg);
         } catch (error) {
-            console.error('[Madara media]', error.message);
-            return plainReply(`I could not read that media: ${error.message}`);
+            return plainReply('I could not read that media: ' + error.message);
         }
+
         if (!input && !attachment) {
-            return plainReply('Ask me anything, or attach a photo/video and ask me to analyze it.');
+            return plainReply('Speak, or send an image with a question.');
         }
 
-        // Ask the AI directly
-        await sock.sendMessage(from, {
-            react: { text: '👹', key: msg.key }
-        }).catch(() => {});
+        await sock.sendMessage(from, { react: { text: '👹', key: msg.key } }).catch(() => {});
 
-        const userPrompt = input || (attachment?.type === 'video'
-            ? 'Analyze this video and explain what it contains, including the main actions, people, objects, text, and notable details.'
-            : 'Analyze this image and explain clearly what it contains, including people, objects, text, setting, and notable details.');
-        const aiReply = attachment
-            ? await askMultimodal({
+        const userPrompt = input || (attachment && attachment.type === 'video'
+            ? 'Describe what is in this video.'
+            : 'Describe what is in this image.');
+
+        let aiReply;
+        if (attachment) {
+            aiReply = finalizeReply(await askMultimodal({
                 key: 'madara:' + chatKey,
-                system: MADARA_IDENTITY + ' You can inspect attached photos and sampled video frames. Be clear about what is directly visible and do not invent details.',
-                user: userPrompt,
+                system: MADARA_IDENTITY + ' You can inspect attached images. Only state what is visible.',
+                user: '[Madara Uchiha. Creator of bot: 𝙼𝙰𝙳𝙰𝚁𝙰𝙳𝙴𝚅.]\n\n' + userPrompt,
                 media: attachment.media,
                 remember: true,
                 compact: true,
-            })
-            : await getMadaraAIReply(input, 'madara:' + chatKey, {
-                memoryContext: memory?.getContext(database, chatKey),
+            }));
+        } else {
+            aiReply = await getMadaraAIReply(input, 'madara:' + chatKey, {
+                memoryContext: memory && memory.getContext ? memory.getContext(database, chatKey) : null,
             });
+        }
 
         if (!aiReply) {
             const failure = getLastAIError();
-            const detail = failure?.provider
-                ? ` Provider: ${failure.provider}${failure.model ? `/${failure.model}` : ''}; reason: ${failure.message}.`
+            const detail = failure && failure.provider
+                ? ' (' + failure.provider + ': ' + failure.message + ')'
                 : '';
-            return plainReply(`I can’t reach the AI right now. Check AGNES_API_KEY or try again soon.${detail}`);
+            return plainReply('The path is blocked.' + detail);
+        }
+
+        const cmd = extractCmd(aiReply);
+        if (cmd) {
+            const fakeCtx = ctx.execute ? ctx : {
+                ...ctx,
+                reply: (t) => plainReply(t),
+                prefix: ctx.prefix || '.',
+                from,
+                sender,
+                isGroup,
+            };
+            await runSafeCmd(sock, msg, fakeCtx, cmd);
+            return;
         }
 
         await plainReply(aiReply);
-    }
+
+        try {
+            if (memory && memory.remember && input) {
+                memory.remember(database, chatKey, {
+                    sender: sender,
+                    senderLabel: ctx.pushName || 'User',
+                    text: input,
+                });
+                memory.remember(database, chatKey, {
+                    sender: 'madara',
+                    senderLabel: 'Madara',
+                    text: aiReply,
+                    fromMe: true,
+                });
+            }
+        } catch {}
+    },
 };
