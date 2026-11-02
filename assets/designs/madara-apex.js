@@ -88,36 +88,25 @@ module.exports = {
           rows: categoryRows.slice(i, i + 10),
         });
       }
-      const tableCats = categoryNames;
 
+      // FIXED: 16 components only, not 151
       const widget = {
         version:"v0.9",
         createSurface:{
           surfaceId:"madara-apex-v1",
           catalogId:"https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json",
           components:[
-            {id:"root",component:"Column",align:"center",children:["titleRow","d1","tableCard","d2","foot","btnRow"]},
+            {id:"root",component:"Column",align:"center",children:["titleRow","d1","statsCard","d2","foot","btnRow"]},
             {id:"titleRow",component:"Row",justify:"center",children:["title"]},
             {id:"title",component:"Text",text:"༺ 𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇 ༻",variant:"h2"},
             {id:"d1",component:"Divider"},
-            {id:"tableCard",component:"Card",child:"tableCol"},
-            {id:"tableCol",component:"Column",children:["headRow","divHead",...tableCats.flatMap((_,i)=>['row'+i+'1','div'+i])]},
-            {id:"headRow",component:"Row",children:["headL","headR"]},
-            {id:"headL",component:"Column",weight:1,children:["hCmd"]},
-            {id:"hCmd",component:"Text",text:"Category",variant:"h5"},
-            {id:"headR",component:"Column",weight:1,children:["hDesc"]},
-            {id:"hDesc",component:"Text",text:"Count",variant:"h5"},
-            {id:"divHead",component:"Divider"},
-         ...tableCats.flatMap((cat,i)=>[
-              {id:'row'+i+'1',component:"Row",children:['col'+i+'L','col'+i+'R']},
-              {id:'col'+i+'L',component:"Column",weight:1,children:['c'+i]},
-              {id:'c'+i,component:"Text",text:String(cat)},
-              {id:'col'+i+'R',component:"Column",weight:1,children:['d'+i+'x']},
-              {id:'d'+i+'x',component:"Text",text:String(categories[cat].length)+' cmds'},
-              {id:'div'+i,component:"Divider"},
-            ]),
+            {id:"statsCard",component:"Card",child:"statsCol"},
+            {id:"statsCol",component:"Column",children:["stat1","stat2","stat3"]},
+            {id:"stat1",component:"Text",text:`Total Plugins: ${totalCmds}`},
+            {id:"stat2",component:"Text",text:`Categories: ${categoryNames.length}`},
+            {id:"stat3",component:"Text",text:`Prefix: .`},
             {id:"d2",component:"Divider"},
-            {id:"foot",component:"Text",text:'𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇 | '+String(totalCmds)+' Plugins',variant:"caption"},
+            {id:"foot",component:"Text",text:`𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇 | ${totalCmds} Plugins`,variant:"caption"},
             {id:"btnRow",component:"Row",justify:"spaceEvenly",children:["btn1","btn2"]},
             {id:"btn1Label",component:"Text",text:"1st-Channel"},
             {id:"btn1",component:"Button",child:"btn1Label",variant:"primary",action:{call:"openUrl",args:{url:this.CHANNEL_URL}}},
@@ -127,7 +116,10 @@ module.exports = {
         }
       };
       return { IMAGE_URL:this.MENU_IMAGE_URL, widget, sections, totalCmds, footerText:'𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇 | '+String(totalCmds)+' Plugins' };
-    }catch(e){ return { IMAGE_URL:this.MENU_IMAGE_URL, widget:{version:"v0.9",createSurface:{surfaceId:"fb",catalogId:"https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json",components:[{id:"root",component:"Column",children:["t"]},{id:"t",component:"Text",text:"𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇"}]}}, sections:[{title:"MENU",rows:[{title:".menu",id:"menu"}]}], totalCmds:1, footerText:"𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇" }; }
+    }catch(e){ 
+      console.log(e);
+      return { IMAGE_URL:this.MENU_IMAGE_URL, widget:{version:"v0.9",createSurface:{surfaceId:"fb",catalogId:"https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json",components:[{id:"root",component:"Column",children:["t"]},{id:"t",component:"Text",text:"𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇"}]}}, sections:[{title:"MENU",rows:[{title:".menu",id:"menu"}]}], totalCmds:1, footerText:"𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇" }; 
+    }
   },
 
   async render(sock, msg, args, skinId, ctx){
@@ -137,21 +129,12 @@ module.exports = {
     const out = this.buildMadaraDesign(null,null,extra);
     const { imageMessage } = await prepareWAMessageMedia({ image:{ url: out.IMAGE_URL } }, { upload: sock.waUploadToServer.bind(sock) });
 
-    // NEW: Bot forward context like Meta AI richResponse
     const botForwardContext = {
       forwardingScore: 1,
       isForwarded: true,
-      entryPointConversionSource: "non_contact",
-      entryPointConversionApp: "whatsapp",
-      entryPointConversionDelaySeconds: 40584,
-      forwardedAiBotMessageInfo: {
-        botJid: "867051314767696@bot"
-      },
+      forwardedAiBotMessageInfo: { botJid: "867051314767696@bot" },
       forwardOrigin: "META_AI",
-      botMessageSharingInfo: {
-        botEntryPointOrigin: "FAVICON",
-        forwardScore: 1
-      }
+      botMessageSharingInfo: { botEntryPointOrigin: "FAVICON", forwardScore: 1 }
     };
 
     const content = {
