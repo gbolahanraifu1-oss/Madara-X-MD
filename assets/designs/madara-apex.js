@@ -1,8 +1,8 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const {
-  getMenuCategoryCatalog,
   getCategoryMeta,
   resolveCategory,
 } = require('../../lib/menuCategories');
@@ -32,20 +32,12 @@ module.exports = {
           const id = String(plugin.name);
           if (seen.has(`${key}:${id}`)) continue;
           seen.add(`${key}:${id}`);
-          bucket.push({
-            title: `.${id}`,
-            description: String(plugin.desc || plugin.description || 'cmd').slice(0, 60),
-            id,
-          });
+          bucket.push(plugin.name);
           totalCmds++;
         }
       };
-
       if(grouped && Object.keys(grouped).length){
-        for(const k in grouped){
-          if(!k) continue;
-          addCategory(k, grouped[k]);
-        }
+        for(const k in grouped) if(k) addCategory(k, grouped[k]);
       }else if(categoriesMap){
         const entries = categoriesMap instanceof Map? categoriesMap.entries():Object.entries(categoriesMap);
         for(const [k,v] of entries){
@@ -53,32 +45,14 @@ module.exports = {
           addCategory(k, list);
         }
       }
-
-      if(!Object.keys(categories).length){
-        const baseDir = path.join(__dirname, '../../commands');
-        if(fs.existsSync(baseDir)){
-          for(const c of fs.readdirSync(baseDir).filter(d=>{try{return fs.statSync(path.join(baseDir,d)).isDirectory()}catch{return false}})){
-            for(const f of fs.readdirSync(path.join(baseDir,c)).filter(x=>x.endsWith('.js'))){
-              try{
-                const fp=path.join(baseDir,c,f); try{delete require.cache[require.resolve(fp)]}catch{}
-                const plugin=require(fp); if(!plugin||!plugin.name) continue;
-                addCategory(plugin.category || c || 'misc', [plugin]);
-              }catch{}
-            }
-          }
-        }
-      }
-      if(!totalCmds){ categories={General:[{title:'.menu',description:'menu',id:'menu'}]}; totalCmds=1; }
-
       const categoryNames = Object.keys(categories).sort();
-      const categoryRows = categoryNames.map(cat => {
-        const meta = getCategoryMeta(cat, categories);
-        return {
-          title: `${meta?.e || '📂'} ${cat.toUpperCase()}`,
-          description: `${categories[cat].length} commands`,
-          id: `madara_cat_${cat}`,
-        };
-      });
+      const categoryRows = categoryNames.map(cat => ({
+        title: `${(getCategoryMeta(cat, categories)?.e || '📂')} ${cat.toUpperCase()}`,
+        description: `${categories[cat].length} commands`,
+        id: `madara_cat_${cat}`,
+      }));
+      
+      // Build sections for single_select - chunk to show all 22 cats
       const sections = [];
       for (let i = 0; i < categoryRows.length; i += 10) {
         const page = Math.floor(i / 10) + 1;
@@ -89,77 +63,112 @@ module.exports = {
         });
       }
 
-      // FIXED: 16 components only, not 151
+      // DIRECTORY as single text - like premium file
+      const directory = categoryNames.map(cat => {
+        const cmds = categories[cat] || [];
+        return `┌─〔 ${cat.toUpperCase()} 〕\n${cmds.map(n=>`│ .${n}`).join('\n')}\n└─ ${cmds.length} cmds`;
+      }).join('\n\n');
+
+      const uuid = crypto.randomUUID();
+      const surfaceId = `madara-apex=${uuid}`;
+      
+      // Same widget structure as premium - 26 comps only
+      const components = [
+        {id:'root',component:'Card',child:'main'},
+        {id:'main',component:'Column',children:['brand','version','heading','description','stats','divider','directoryTitle','directory','footerDivider','footerTitle','footerInfo','btnRow']},
+        {id:'brand',component:'Text',text:'༺ 𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇 ༻',variant:'h2'},
+        {id:'version',component:'Text',text:`ADVANCED INTERFACE / ${totalCmds} PLUGINS`,variant:'caption'},
+        {id:'heading',component:'Text',text:'Centro de comandos',variant:'h3'},
+        {id:'description',component:'Text',text:'Sistema principal de herramientas de MADARA X-MD.',variant:'body'},
+        {id:'stats',component:'Row',children:['total','cats','status']},
+        {id:'total',component:'Card',child:'totalValue'},
+        {id:'totalValue',component:'Column',children:['totalLabel','totalNumber']},
+        {id:'totalLabel',component:'Text',text:'COMANDOS',variant:'caption'},
+        {id:'totalNumber',component:'Text',text:String(totalCmds),variant:'h2'},
+        {id:'cats',component:'Card',child:'catsValue'},
+        {id:'catsValue',component:'Column',children:['catsLabel','catsNumber']},
+        {id:'catsLabel',component:'Text',text:'CATEGORÍAS',variant:'caption'},
+        {id:'catsNumber',component:'Text',text:String(categoryNames.length),variant:'h2'},
+        {id:'status',component:'Card',child:'statusValue'},
+        {id:'statusValue',component:'Column',children:['statusLabel','statusNumber']},
+        {id:'statusLabel',component:'Text',text:'ESTADO',variant:'caption'},
+        {id:'statusNumber',component:'Text',text:'ONLINE',variant:'h2'},
+        {id:'divider',component:'Divider'},
+        {id:'directoryTitle',component:'Text',text:'DIRECTORIO DE COMANDOS',variant:'h3'},
+        {id:'directory',component:'Text',text:directory.slice(0, 4000) || 'No hay comandos',variant:'body'},
+        {id:'footerDivider',component:'Divider'},
+        {id:'footerTitle',component:'Text',text:'𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇 • COMMAND CENTER',variant:'h4'},
+        {id:'footerInfo',component:'Text',text:`Sistema activo · ${totalCmds} comandos · ID ${uuid.slice(0,8)}`,variant:'caption'},
+        {id:'btnRow',component:'Row',justify:'spaceEvenly',children:['btn1','btn2']},
+        {id:'btn1Label',component:'Text',text:'1st-Channel'},
+        {id:'btn1',component:'Button',child:'btn1Label',variant:'primary',action:{call:'openUrl',args:{url:this.CHANNEL_URL}}},
+        {id:'btn2Label',component:'Text',text:'2nd-Channel'},
+        {id:'btn2',component:'Button',child:'btn2Label',variant:'primary',action:{call:'openUrl',args:{url:this.CHANNEL2_URL}}},
+      ];
+
       const widget = {
-        version:"v0.9",
-        createSurface:{
-          surfaceId:"madara-apex-v1",
-          catalogId:"https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json",
-          components:[
-            {id:"root",component:"Column",align:"center",children:["titleRow","d1","statsCard","d2","foot","btnRow"]},
-            {id:"titleRow",component:"Row",justify:"center",children:["title"]},
-            {id:"title",component:"Text",text:"༺ 𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇 ༻",variant:"h2"},
-            {id:"d1",component:"Divider"},
-            {id:"statsCard",component:"Card",child:"statsCol"},
-            {id:"statsCol",component:"Column",children:["stat1","stat2","stat3"]},
-            {id:"stat1",component:"Text",text:`Total Plugins: ${totalCmds}`},
-            {id:"stat2",component:"Text",text:`Categories: ${categoryNames.length}`},
-            {id:"stat3",component:"Text",text:`Prefix: .`},
-            {id:"d2",component:"Divider"},
-            {id:"foot",component:"Text",text:`𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇 | ${totalCmds} Plugins`,variant:"caption"},
-            {id:"btnRow",component:"Row",justify:"spaceEvenly",children:["btn1","btn2"]},
-            {id:"btn1Label",component:"Text",text:"1st-Channel"},
-            {id:"btn1",component:"Button",child:"btn1Label",variant:"primary",action:{call:"openUrl",args:{url:this.CHANNEL_URL}}},
-            {id:"btn2Label",component:"Text",text:"2nd-Channel"},
-            {id:"btn2",component:"Button",child:"btn2Label",variant:"primary",action:{call:"openUrl",args:{url:this.CHANNEL2_URL}}},
-          ]
-        }
+        uuid,
+        type:'im_a2ui',
+        data:JSON.stringify({
+          version:'v0.9',
+          createSurface:{
+            surfaceId,
+            catalogId:'https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json',
+            sendDataModel:true,
+            components
+          }
+        }),
+        fallback:'𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇 | COMMAND CENTER',
+        responseId: crypto.randomUUID().replace(/-/g,'')
       };
-      return { IMAGE_URL:this.MENU_IMAGE_URL, widget, sections, totalCmds, footerText:'𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇 | '+String(totalCmds)+' Plugins' };
+
+      return { IMAGE_URL:this.MENU_IMAGE_URL, widget, sections, totalCmds, categoriesCount: categoryNames.length, footerText:`𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇 | ${totalCmds} Plugins` };
     }catch(e){ 
       console.log(e);
-      return { IMAGE_URL:this.MENU_IMAGE_URL, widget:{version:"v0.9",createSurface:{surfaceId:"fb",catalogId:"https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json",components:[{id:"root",component:"Column",children:["t"]},{id:"t",component:"Text",text:"𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇"}]}}, sections:[{title:"MENU",rows:[{title:".menu",id:"menu"}]}], totalCmds:1, footerText:"𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇" }; 
+      return { IMAGE_URL:this.MENU_IMAGE_URL, widget:{uuid:crypto.randomUUID(),type:'im_a2ui',data:JSON.stringify({version:"v0.9",createSurface:{surfaceId:"fb",catalogId:"https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json",components:[{id:"root",component:"Column",children:["t"]},{id:"t",component:"Text",text:"𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇"}]}}),fallback:"APEX"}, sections:[{title:"MENU",rows:[{title:".menu",id:"menu"}]}], totalCmds:1, footerText:"𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇" }; 
     }
   },
 
   async render(sock, msg, args, skinId, ctx){
-    const { generateWAMessageFromContent, prepareWAMessageMedia } = require('@itsliaaa/baileys');
+    const { generateWAMessageFromContent, prepareWAMessageMedia, isJidGroup } = require('@itsliaaa/baileys');
     const from = (ctx && ctx.from) || (msg && (msg.chat || msg.key.remoteJid)) || '';
     let extra = {}; try{ const loader=require('../../lib/loader'); const cats=loader.getCategories(); if(cats instanceof Map) extra={categoriesMap:cats}; else extra={grouped:cats}; }catch{}
     const out = this.buildMadaraDesign(null,null,extra);
     const { imageMessage } = await prepareWAMessageMedia({ image:{ url: out.IMAGE_URL } }, { upload: sock.waUploadToServer.bind(sock) });
 
-    const botForwardContext = {
-      forwardingScore: 1,
-      isForwarded: true,
-      forwardedAiBotMessageInfo: { botJid: "867051314767696@bot" },
-      forwardOrigin: "META_AI",
-      botMessageSharingInfo: { botEntryPointOrigin: "FAVICON", forwardScore: 1 }
-    };
+    const buttons = out.sections.map(sec => ({
+      name: "single_select",
+      buttonParamsJson: JSON.stringify({ title: sec.title, sections: [sec] })
+    }));
+
+    const responseId = out.widget.responseId || crypto.randomUUID().replace(/-/g,'');
 
     const content = {
+      messageContextInfo:{messageSecret:crypto.randomBytes(32)},
       interactiveMessage:{
         header:{ imageMessage, hasMediaAttachment:true },
-        body:{ text:'\u200E' },
+        body:{ text:`TV.Z | ${out.totalCmds} PLUGINS` },
         footer:{ text:out.footerText },
-        contextInfo: botForwardContext,
-        bloksWidget:{ type:"im_a2ui", data:JSON.stringify(out.widget), fallback:out.footerText },
-        nativeFlowMessage:{
-          messageParamsJson: JSON.stringify({
-            limited_time_offer:{
-              text:'𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇',
-              url:this.CHANNEL_URL,
-              copy_code:'𝙼𝙰𝙳𝙰𝚁𝙰 𝙰𝙿𝙴𝚇',
-              expiration_time: new Date('2026-10-24T23:59:59Z').getTime()
-            }
-          }),
-          buttons:[
-            { name:"single_select", buttonParamsJson: JSON.stringify({ title:'📂 OPEN MENU ('+String(out.totalCmds)+')', sections:out.sections }) }
-          ]
+        nativeFlowMessage:{ buttons, messageParamsJson:'{}', messageVersion:1 },
+        bloksWidget: out.widget,
+        contextInfo:{
+          isForwarded:true,
+          forwardingScore:1,
+          forwardedAiBotMessageInfo:{ botJid:"867051314767696@bot" },
+          forwardOrigin:"META_AI",
+          botMessageSharingInfo:{ botEntryPointOrigin:"FAVICON", forwardScore:1 }
         }
       }
     };
-    const waMsg = generateWAMessageFromContent(from, content, {userJid:sock.user.id, quoted:msg});
-    await sock.relayMessage(from, waMsg.message, {messageId:waMsg.key.id});
+
+    const waMsg = generateWAMessageFromContent(from, content, {userJid:sock.user.id, raw:true, quoted:msg});
+    const additionalNodes = [
+      ...(!isJidGroup(from)?[{tag:'bot',attrs:{biz_bot:'1'}}]:[]),
+      {tag:'biz',attrs:{actual_actors:'2',host_storage:'2',privacy_mode_ts:String(Math.floor(Date.now()/1000))},content:[
+        {tag:'interactive',attrs:{type:'native_flow',v:'1'},content:[{tag:'native_flow',attrs:{v:'9',name:'mixed'}}]},
+        {tag:'quality_control',attrs:{decision_id:responseId,source_type:'third_party'},content:[{tag:'decision_source',attrs:{value:'df'}}]}
+      ]}
+    ];
+    await sock.relayMessage(from, waMsg.message, {messageId:waMsg.key.id, additionalNodes});
   }
 };
