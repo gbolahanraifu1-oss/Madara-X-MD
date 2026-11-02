@@ -1,131 +1,279 @@
 'use strict';
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 💣 MADARA X-MD  |  TELESTICKER
-// Grabs an ENTIRE Telegram sticker pack (link or short name) and sends
-// every sticker straight to the user as WhatsApp stickers — no index
-// picking needed. WhatsApp groups stickers sent with the same pack+author
-// EXIF into one visual pack in the recipient's tray/sticker store, but
-// packs work best capped around ~30 stickers (the convention official
-// Sticker Maker apps use) — if a Telegram pack has more than that, this
-// splits the overflow into "PackName (2)", "PackName (3)", etc. so every
-// sticker still gets delivered instead of silently dropping the rest.
-// Usage: †telesticker <t.me/addstickers/PackName | PackName>
-//        †telestop — cancels your own in-progress send
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 const axios = require('axios');
+const crypto = require('crypto');
 const { Sticker, StickerTypes } = require('../../lib/sticker');
 
-const PACK_LIMIT = 30;   // convention used by official Sticker Maker apps
-const SEND_DELAY = 1500; // ms between sends — paced out, feels less like a flood
+const PACK_MAX = 60; // WA-style cap per pack; overflow → Pack (2), Pack (3)…
+const JOB_TTL_MS = 15 * 60 * 1000;
 
-// Per-user cancel flags for in-progress jobs — shared with telestop.js
 if (!global._telestickerJobs) global._telestickerJobs = new Map();
 const jobs = global._telestickerJobs;
 
 function extractPackName(input) {
     if (!input) return null;
-    const m = input.match(/(?:t\.me\/addstickers\/|tg:\/\/addstickers\?set=)([A-Za-z0-9_]+)/i);
-    return m ? m[1] : input.trim();
+    const m = String(input).match(/(?:t\.me\/addstickers\/|tg:\/\/addstickers\?set=)([A-Za-z0-9_]+)/i);
+    return m ? m[1] : String(input).trim();
 }
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+function uuid() {
+    if (crypto.randomUUID) return crypto.randomUUID();
+    return crypto.randomBytes(16).toString('hex').replace(
+        /^(.{8})(.{4})(.{4})(.{4})(.{12})$/,
+        '$1-$2-$3-$4-$5'
+    );
+}
+
+function chunk(arr, size) {
+    const out = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+}
+
+async function sendOnePack(sock, msg, ctx, packName, publisher, items) {
+    const packId = uuid();
+
+    // Path A — native stickerPack
+    try {
+        await sock.sendMessage(
+            ctx.from,
+            {
+                stickerPack: {
+                    name: packName,
+                    publisher,
+                    packId,
+                    description: packName,
+                    stickers: items.map((item) => ({
+                        data: item.buf,
+                        emojis: item.emojis,
+                        isAnimated: item.isAnimated,
+                    })),
+                    cover: items[0].buf,
+                },
+            },
+            { quoted: msg }
+        );
+        return { ok: true, mode: 'native', count: items.length };
+    } catch (e) {
+        console.warn('[telesticker] native pack fail:', e.message);
+    }
+
+    // Path B — upload + stickerPackMessage relay
+    let prepareWAMessageMedia;
+    let generateWAMessageFromContent;
+    try {
+        const b = require('@itsliaaa/baileys');
+        prepareWAMessageMedia = b.prepareWAMessageMedia;
+        generateWAMessageFromContent = b.generateWAMessageFromContent;
+    } catch {
+        try {
+            const b = require('baileys');
+            prepareWAMessageMedia = b.prepareWAMessageMedia;
+            generateWAMessageFromContent = b.generateWAMessageFromContent;
+        } catch {}
+    }
+
+    if (typeof sock.waUploadToServer === 'function' && typeof prepareWAMessageMedia === 'function') {
+        const stickersMeta = [];
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            const media = await prepareWAMessageMedia(
+                { sticker: item.buf },
+                { upload: sock.waUploadToServer }
+            );
+            const sm = media.stickerMessage || {};
+            stickersMeta.push({
+                fileName: packId + '_' + i + '.webp',
+                isAnimated: item.isAnimated,
+                emojis: item.emojis,
+                accessibilityLabel: packName,
+                isLottie: false,
+                mimetype: 'image/webp',
+                directPath: sm.directPath,
+                fileSha256: sm.fileSha256,
+                fileEncSha256: sm.fileEncSha256,
+                mediaKey: sm.mediaKey,
+                fileLength: sm.fileLength,
+                mediaKeyTimestamp: sm.mediaKeyTimestamp,
+            });
+        }
+
+        const coverMedia = await prepareWAMessageMedia(
+            { image: items[0].buf },
+            { upload: sock.waUploadToServer }
+        );
+        const im = coverMedia.imageMessage || {};
+
+        const stickerPackMessage = {
+            stickerPackId: packId,
+            name: packName,
+            publisher,
+            stickers: stickersMeta,
+            trayIconFileName: packId + '.png',
+            stickerPackOrigin: 'USER_CREATED',
+            stickerPackSize: String(items.length),
+            fileLength: im.fileLength,
+            fileSha256: im.fileSha256,
+            fileEncSha256: im.fileEncSha256,
+            mediaKey: im.mediaKey,
+            directPath: im.directPath,
+            mediaKeyTimestamp: im.mediaKeyTimestamp,
+            thumbnailDirectPath: im.directPath,
+            thumbnailSha256: im.fileSha256,
+            thumbnailEncSha256: im.fileEncSha256,
+            thumbnailHeight: 252,
+            thumbnailWidth: 252,
+        };
+
+        if (typeof generateWAMessageFromContent === 'function') {
+            const full = generateWAMessageFromContent(
+                ctx.from,
+                { stickerPackMessage },
+                { userJid: sock.user?.id, quoted: msg }
+            );
+            await sock.relayMessage(ctx.from, full.message, { messageId: full.key.id });
+        } else {
+            await sock.relayMessage(ctx.from, { stickerPackMessage }, {});
+        }
+        return { ok: true, mode: 'relay', count: items.length };
+    }
+
+    // Path C — shared pack EXIF, few stickers only (no spam full set)
+    const preview = Math.min(5, items.length);
+    for (let i = 0; i < preview; i++) {
+        const stk = new Sticker(items[i].buf, { pack: packName, author: publisher });
+        await sock.sendMessage(
+            ctx.from,
+            { sticker: await stk.toBuffer(), stickerMetadata: stk.metadata() },
+            { quoted: msg }
+        );
+    }
+    return { ok: true, mode: 'preview', count: preview };
+}
 
 module.exports = {
     name: 'telesticker',
     aliases: ['tsticker', 'tgpack'],
     category: 'sticker',
-    desc: 'sᴇɴᴅ ᴀɴ ᴇɴᴛɪʀᴇ ᴛᴇʟᴇɢʀᴀᴍ sᴛɪᴄᴋᴇʀ ᴘᴀᴄᴋ',
-    usage: '†telesticker <pack link/name>',
+    desc: 'Telegram sticker set → WA pack(s), split every 60',
+    usage: '.telesticker <t.me/addstickers/PackName>',
+
     async execute(sock, msg, args, ctx) {
-        const s     = ctx.settings;
+        const s = ctx.settings;
         const token = process.env.TELEGRAM_BOT_TOKEN || s.telegramToken;
 
-        if (!token) return ctx.reply(`❌ Telegram bot token isn't configured (TELEGRAM_BOT_TOKEN).${s.FOOTER}`);
-
-        const packInput = extractPackName(args[0]);
-        if (!packInput) return ctx.reply(`❌ Usage: \`${s.prefix}telesticker <t.me/addstickers/PackName>\`${s.FOOTER}`);
-
-        if (jobs.get(ctx.sender)) {
-            return ctx.reply(`⚠️ You already have a pack sending — use \`${s.prefix}telestop\` first if you want to cancel it.${s.FOOTER}`);
+        if (!token) {
+            return ctx.reply('Telegram bot token missing (TELEGRAM_BOT_TOKEN).' + s.FOOTER);
         }
 
+        const packInput = extractPackName(args[0]);
+        if (!packInput) {
+            return ctx.reply('Usage: `' + s.prefix + 'telesticker <t.me/addstickers/PackName>`' + s.FOOTER);
+        }
+
+        if (jobs.get(ctx.sender)) {
+            return ctx.reply('Pack job already running. Use `' + s.prefix + 'telestop` to cancel.' + s.FOOTER);
+        }
+
+        jobs.set(ctx.sender, Date.now() + JOB_TTL_MS);
         await ctx.react('⏳');
+
         try {
-            const res = await axios.get(`https://api.telegram.org/bot${token}/getStickerSet`, {
+            const res = await axios.get('https://api.telegram.org/bot' + token + '/getStickerSet', {
                 params: { name: packInput },
+                timeout: 30000,
             });
-
             const set = res?.data?.result;
-            if (!set || !set.stickers?.length) return ctx.reply(`❌ Couldn't find that Telegram sticker pack.${s.FOOTER}`);
+            if (!set || !set.stickers?.length) {
+                jobs.delete(ctx.sender);
+                return ctx.reply('Could not find that Telegram sticker pack.' + s.FOOTER);
+            }
 
-            const total = set.stickers.length;
+            const baseTitle = String(set.title || packInput).slice(0, 100);
+            const publisher = String(s.ownerName || s.botBrand || 'MADARA X-MD').slice(0, 128);
 
-            // ── One-time instructions before anything gets sent ──────────
-            const willSplit = total > PACK_LIMIT;
             await ctx.reply(
-                `📦 *${set.title}* — ${total} sticker(s).\n\n` +
-                `ʜᴇʀᴇ's ʜᴏᴡ ᴛʜɪs ᴡᴏʀᴋs:\n` +
-                `• Stickers get sent one by one, ~${(SEND_DELAY/1000).toFixed(1)}s apart — this is a WhatsApp limit, not a choice, there's no bulk-delivery option.\n` +
-                `• Long-press any sticker → *Add to Favorites* on your end to actually save it — the bot can't save into your tray directly.\n` +
-                `• Every sticker here shares the same pack name, so WhatsApp groups them together once you favorite a few.\n` +
-                (willSplit ? `• This pack has more than ${PACK_LIMIT}, so it'll split into multiple packs: *${set.title}*, *${set.title} (2)*, etc.\n` : '') +
-                `• Lottie/.tgs animated stickers aren't supported yet and get skipped — regular video-based animated ones work fine.\n` +
-                `• Changed your mind mid-send? \`${s.prefix}telestop\` cancels it.\n\n` +
-                `sᴇɴᴅɪɴɢ ɴᴏᴡ...${s.FOOTER}`
+                '📦 *' + baseTitle + '* — ' + set.stickers.length + ' sticker(s)\n' +
+                'Pack size: ' + PACK_MAX + ' each (auto-split if more)…' + s.FOOTER
             );
 
-            jobs.set(ctx.sender, true);
-            let sent = 0, skipped = 0, stopped = false;
+            const all = [];
+            let skipped = 0;
 
-            for (let i = 0; i < total; i++) {
-                if (!jobs.get(ctx.sender)) { stopped = true; break; } // cancelled via .telestop
-
-                const sticker = set.stickers[i];
-
-                if (sticker.is_animated) {
-                    skipped++; // Lottie (.tgs) — not supported for conversion yet
+            for (let i = 0; i < set.stickers.length; i++) {
+                if (!jobs.get(ctx.sender)) break;
+                const st = set.stickers[i];
+                if (st.is_animated) {
+                    skipped++;
                     continue;
                 }
-
                 try {
-                    const fileRes = await axios.get(`https://api.telegram.org/bot${token}/getFile`, {
-                        params: { file_id: sticker.file_id },
+                    const fileRes = await axios.get('https://api.telegram.org/bot' + token + '/getFile', {
+                        params: { file_id: st.file_id },
+                        timeout: 20000,
                     });
                     const filePath = fileRes?.data?.result?.file_path;
-                    if (!filePath) { skipped++; continue; }
-
-                    const fileUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
-                    const type    = sticker.is_video ? StickerTypes.ANIMATED : StickerTypes.DEFAULT;
-
-                    // Overflow past PACK_LIMIT rolls into a new pack name
-                    // ("Title (2)", "Title (3)"...) instead of stopping.
-                    const packNum   = Math.floor(sent / PACK_LIMIT) + 1;
-                    const packLabel = packNum === 1 ? set.title : `${set.title} (${packNum})`;
-
-                    const stkObj = new Sticker(fileUrl, { pack: packLabel, author: s.ownerName, type });
-                    await sock.sendMessage(ctx.from, { sticker: await stkObj.toBuffer() }, { quoted: msg });
-
-                    sent++;
-                    await sleep(SEND_DELAY);
+                    if (!filePath) {
+                        skipped++;
+                        continue;
+                    }
+                    const fileUrl = 'https://api.telegram.org/file/bot' + token + '/' + filePath;
+                    const type = st.is_video ? StickerTypes.ANIMATED : StickerTypes.DEFAULT;
+                    const stk = new Sticker(fileUrl, { pack: baseTitle, author: publisher, type });
+                    const buf = await stk.toBuffer();
+                    if (!buf || buf.length < 100) {
+                        skipped++;
+                        continue;
+                    }
+                    all.push({
+                        buf,
+                        emojis: Array.isArray(st.emoji) ? st.emoji : (st.emoji ? [st.emoji] : ['⭐']),
+                        isAnimated: !!st.is_video,
+                    });
                 } catch (e) {
-                    console.error('[telesticker] sticker send failed:', e.message);
+                    console.error('[telesticker]', e.message);
                     skipped++;
                 }
             }
 
-            jobs.delete(ctx.sender);
-
-            if (stopped) {
-                return ctx.reply(`🛑 Stopped — sent *${sent}* before cancelling.${s.FOOTER}`);
+            if (!jobs.get(ctx.sender)) {
+                jobs.delete(ctx.sender);
+                return ctx.reply('Stopped.' + s.FOOTER);
+            }
+            if (!all.length) {
+                jobs.delete(ctx.sender);
+                return ctx.reply('No convertible stickers.' + s.FOOTER);
             }
 
-            let summary = `✅ Sent *${sent}* sticker(s) from *${set.title}*.`;
-            if (sent > PACK_LIMIT) summary += `\n📦 Split across ${Math.ceil(sent / PACK_LIMIT)} packs (${PACK_LIMIT}/pack).`;
-            if (skipped) summary += `\n⚠️ Skipped *${skipped}* (Lottie/.tgs animated or failed to fetch).`;
-            await ctx.reply(summary + s.FOOTER);
+            const batches = chunk(all, PACK_MAX);
+            const results = [];
+
+            for (let b = 0; b < batches.length; b++) {
+                if (!jobs.get(ctx.sender)) break;
+                const label = batches.length === 1
+                    ? baseTitle
+                    : baseTitle + ' (' + (b + 1) + '/' + batches.length + ')';
+                const r = await sendOnePack(sock, msg, ctx, label, publisher, batches[b]);
+                results.push({ label, ...r });
+            }
+
+            jobs.delete(ctx.sender);
+            await ctx.react('✅');
+
+            const lines = results.map((r) =>
+                '• *' + r.label + '* — ' + r.count + ' (' + r.mode + ')'
+            );
+            return ctx.reply(
+                '✅ Done\n' +
+                lines.join('\n') +
+                (skipped ? '\nSkipped: ' + skipped : '') +
+                s.FOOTER
+            );
         } catch (e) {
             jobs.delete(ctx.sender);
-            await ctx.reply(`❌ ᴇʀʀᴏʀ: ${e.response?.data?.description || e.message}${s.FOOTER}`);
+            return ctx.reply(
+                'Error: ' + ((e.response && e.response.data && e.response.data.description) || e.message) + s.FOOTER
+            );
         }
-    }
+    },
 };
