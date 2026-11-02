@@ -137,11 +137,29 @@ module.exports = {
     const out = this.buildMadaraDesign(null,null,extra);
     const { imageMessage } = await prepareWAMessageMedia({ image:{ url: out.IMAGE_URL } }, { upload: sock.waUploadToServer.bind(sock) });
 
+    // NEW: Bot forward context like Meta AI richResponse
+    const botForwardContext = {
+      forwardingScore: 1,
+      isForwarded: true,
+      entryPointConversionSource: "non_contact",
+      entryPointConversionApp: "whatsapp",
+      entryPointConversionDelaySeconds: 40584,
+      forwardedAiBotMessageInfo: {
+        botJid: "867051314767696@bot"
+      },
+      forwardOrigin: "META_AI",
+      botMessageSharingInfo: {
+        botEntryPointOrigin: "FAVICON",
+        forwardScore: 1
+      }
+    };
+
     const content = {
       interactiveMessage:{
         header:{ imageMessage, hasMediaAttachment:true },
         body:{ text:'\u200E' },
         footer:{ text:out.footerText },
+        contextInfo: botForwardContext,
         bloksWidget:{ type:"im_a2ui", data:JSON.stringify(out.widget), fallback:out.footerText },
         nativeFlowMessage:{
           messageParamsJson: JSON.stringify({
