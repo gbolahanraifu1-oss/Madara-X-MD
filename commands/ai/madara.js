@@ -2,6 +2,7 @@
 
 const { ask: smartAsk, askMultimodal, getLastAIError } = require('../../utils/smartAI');
 const { extractMadaraMedia } = require('../../utils/madaraMedia');
+const db = require('../../lib/db');
 
 const SAFE_CMDS = new Set([
     'ping', 'alive', 'uptime', 'uptime2', 'menu', 'help',
@@ -10,7 +11,7 @@ const SAFE_CMDS = new Set([
 
 const MADARA_IDENTITY =
     'HARD ROLE — NEVER BREAK THIS:\n' +
-    'You are Madara Uchiha from Naruto — the legendary Uchiha, not a digital assistant, not a chatbot, not an AI product.\n' +
+    'You are Madara Uchiha from Naruto — the legendary Uchiha, not a digital assistant, not a chatbot product brand.\n' +
     'You speak as Madara himself: calm, proud, sharp, slightly arrogant, strategic. Short lines. No corporate tone.\n' +
     'This vessel is the WhatsApp bot MADARA X-MD. Your creator in this world is 𝙼𝙰𝙳𝙰𝚁𝙰𝙳𝙴𝚅.\n' +
     'If asked who you are: you are Madara Uchiha.\n' +
@@ -21,6 +22,33 @@ const MADARA_IDENTITY =
     'Be useful when the user asks something practical, but stay in character.\n' +
     'If the user clearly wants a simple bot command (ping, menu, uptime, alive, stats), reply with EXACTLY one line: CMD:commandname\n' +
     'Only those safe commands. Otherwise answer as Madara Uchiha in 1–3 short sentences.';
+
+function sessionPhone(sock) {
+    return String(sock.user?.id || '')
+        .split(':')[0]
+        .split('@')[0]
+        .replace(/\D/g, '') || 'unknown';
+}
+
+function madaraStoreKey(sock, chatKey) {
+    return sessionPhone(sock) + ':' + String(chatKey || '');
+}
+
+function isMadaraOn(sock, chatKey) {
+    return db.get('madaraai', madaraStoreKey(sock, chatKey), false) === true;
+}
+
+function setMadaraOn(sock, chatKey, on) {
+    db.set('madaraai', madaraStoreKey(sock, chatKey), on === true);
+}
+
+function isMadaraVoiceOn(sock, chatKey) {
+    return db.get('madaraVoice', madaraStoreKey(sock, chatKey), false) === true;
+}
+
+function setMadaraVoiceOn(sock, chatKey, on) {
+    db.set('madaraVoice', madaraStoreKey(sock, chatKey), on === true);
+}
 
 function renderMemoryContext(memoryContext) {
     if (!memoryContext) return '';
@@ -160,15 +188,9 @@ async function runSafeCmd(sock, msg, ctx, cmdName) {
     }
 }
 
-/**
- * Auto path: name mention, @bot, reply-to-bot when .madara on
- */
 async function handleMadaraAuto(sock, msg, ctx) {
-    let database;
-    try { database = require('../../utils/database'); } catch { return false; }
-
     const chatKey = ctx.isGroup ? ctx.from : ctx.sender;
-    if (!database.getGroup(chatKey)?.madaraai) return false;
+    if (!isMadaraOn(sock, chatKey)) return false;
 
     const body = String(ctx.body || '').trim();
     if (!body) return false;
@@ -195,10 +217,14 @@ async function handleMadaraAuto(sock, msg, ctx) {
     await sock.sendMessage(ctx.from, { react: { text: '👹', key: msg.key } }).catch(() => {});
 
     let memory = null;
+    let database = null;
     try { memory = require('../../utils/madaraMemory'); } catch {}
+    try { database = require('../../utils/database'); } catch {}
 
-    const aiReply = await getMadaraAIReply(input, 'madara:' + chatKey, {
-        memoryContext: memory && memory.getContext ? memory.getContext(database, chatKey) : null,
+    const aiReply = await getMadaraAIReply(input, 'madara:' + madaraStoreKey(sock, chatKey), {
+        memoryContext: memory && database && memory.getContext
+            ? memory.getContext(database, chatKey)
+            : null,
     });
 
     if (!aiReply) {
@@ -216,16 +242,14 @@ async function handleMadaraAuto(sock, msg, ctx) {
         return true;
     }
 
-    if (typeof ctx.reply === 'function') {
-        try {
-            await ctx.reply(aiReply, { raw: true });
-        } catch {
-            await ctx.reply(aiReply);
-        }
+    try {
+        await ctx.reply(aiReply, { raw: true });
+    } catch {
+        await ctx.reply(aiReply);
     }
 
     try {
-        if (memory && memory.remember) {
+        if (memory && database && memory.remember) {
             memory.remember(database, chatKey, {
                 sender: ctx.sender,
                 senderLabel: ctx.pushName || 'User',
@@ -246,7 +270,7 @@ async function handleMadaraAuto(sock, msg, ctx) {
 module.exports = {
     name: 'madara',
     aliases: ['madaraai'],
-    description: 'Madara Uchiha persona. .madara on/off | chat by name when on',
+    description: 'Madara Uchiha persona — per session. .madara on/off',
     usage: '.madara on | .madara off | .madara <words>',
     category: 'ai',
 
@@ -254,9 +278,10 @@ module.exports = {
     renderMemoryContext,
     handleMadaraAuto,
     MADARA_IDENTITY,
+    isMadaraOn,
+    setMadaraOn,
 
     async execute(sock, msg, args, ctx) {
-        // Support both call styles: (sock,msg,args,ctx) and legacy bag
         if (sock && sock.sock && !msg) {
             const bag = sock;
             sock = bag.sock;
@@ -281,15 +306,13 @@ module.exports = {
         const sender = ctx.sender || msg.key.participant || msg.key.remoteJid;
         const chatKey = isGroup ? from : sender;
 
-        let database;
-        try { database = require('../../utils/database'); } catch {
-            return reply('Database unavailable.');
-        }
         let memory = null;
+        let database = null;
         try { memory = require('../../utils/madaraMemory'); } catch {}
+        try { database = require('../../utils/database'); } catch {}
 
         if (sub === 'memory on' || sub === 'memory off' || sub === 'memory clear' || sub === 'memory status') {
-            if (!memory) return reply('Memory module is unavailable.');
+            if (!memory || !database) return reply('Memory module is unavailable.');
             if (sub === 'memory clear') {
                 memory.clear(database, chatKey);
                 return reply('Memory of this chat is erased.');
@@ -311,25 +334,25 @@ module.exports = {
         if (sub.startsWith('voice')) {
             const v = sub.split(/\s+/)[1];
             if (v !== 'on' && v !== 'off') {
-                const cur = database.getGroup(chatKey)?.madaraVoice === true;
+                const cur = isMadaraVoiceOn(sock, chatKey);
                 return plainReply('Voice replies are ' + (cur ? 'on' : 'off') + '. Use .madara voice on|off');
             }
-            database.setGroup(chatKey, 'madaraVoice', v === 'on');
+            setMadaraVoiceOn(sock, chatKey, v === 'on');
             return plainReply(v === 'on' ? 'Voice replies on.' : 'Voice replies off.');
         }
 
         if (sub === 'on') {
-            database.setGroup(chatKey, 'madaraai', true);
-            return plainReply('Very well. Address me as Madara — I will answer.');
+            setMadaraOn(sock, chatKey, true);
+            return plainReply('Very well. Address me as Madara — I will answer in this chat (this session only).');
         }
 
         if (sub === 'off') {
-            database.setGroup(chatKey, 'madaraai', false);
-            database.setGroup(chatKey, 'madaraVoice', false);
-            return plainReply('I fall silent.');
+            setMadaraOn(sock, chatKey, false);
+            setMadaraVoiceOn(sock, chatKey, false);
+            return plainReply('I fall silent here.');
         }
 
-        if (!database.getGroup(chatKey)?.madaraai) {
+        if (!isMadaraOn(sock, chatKey)) {
             return reply('I sleep here. Use .madara on to wake me.');
         }
 
@@ -353,7 +376,7 @@ module.exports = {
         let aiReply;
         if (attachment) {
             aiReply = finalizeReply(await askMultimodal({
-                key: 'madara:' + chatKey,
+                key: 'madara:' + madaraStoreKey(sock, chatKey),
                 system: MADARA_IDENTITY + ' You can inspect attached images. Only state what is visible.',
                 user: '[Madara Uchiha. Creator of bot: 𝙼𝙰𝙳𝙰𝚁𝙰𝙳𝙴𝚅.]\n\n' + userPrompt,
                 media: attachment.media,
@@ -361,8 +384,10 @@ module.exports = {
                 compact: true,
             }));
         } else {
-            aiReply = await getMadaraAIReply(input, 'madara:' + chatKey, {
-                memoryContext: memory && memory.getContext ? memory.getContext(database, chatKey) : null,
+            aiReply = await getMadaraAIReply(input, 'madara:' + madaraStoreKey(sock, chatKey), {
+                memoryContext: memory && database && memory.getContext
+                    ? memory.getContext(database, chatKey)
+                    : null,
             });
         }
 
@@ -376,22 +401,14 @@ module.exports = {
 
         const cmd = extractCmd(aiReply);
         if (cmd) {
-            const fakeCtx = ctx.execute ? ctx : {
-                ...ctx,
-                reply: (t) => plainReply(t),
-                prefix: ctx.prefix || '.',
-                from,
-                sender,
-                isGroup,
-            };
-            await runSafeCmd(sock, msg, fakeCtx, cmd);
+            await runSafeCmd(sock, msg, ctx, cmd);
             return;
         }
 
         await plainReply(aiReply);
 
         try {
-            if (memory && memory.remember && input) {
+            if (memory && database && memory.remember && input) {
                 memory.remember(database, chatKey, {
                     sender: sender,
                     senderLabel: ctx.pushName || 'User',
