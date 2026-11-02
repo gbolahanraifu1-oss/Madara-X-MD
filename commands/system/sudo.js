@@ -5,24 +5,34 @@ const { menuBox } = require('../../lib/menuBox');
 const theme = require('../../lib/sessionTheme');
 const { resolveLid, cacheLidMappings } = require('../../lib/context');
 
-function normNum(jid) {
+function normId(jid) {
     return String(jid || '')
         .split('@')[0]
         .split(':')[0]
-        .replace(/[^0-9]/g, '')
         .replace(/^0+/, '');
 }
 
 function isLidJid(jid) {
-    return String(jid || '').endsWith('@lid');
+    return String(jid || '').toLowerCase().endsWith('@lid');
 }
 
-function isRealPhone(num) {
-    return !!(num && /^[0-9]{7,15}$/.test(num));
+function isPhoneJid(jid) {
+    return String(jid || '').includes('@s.whatsapp.net');
 }
 
-function toPhoneJid(num) {
-    return num + '@s.whatsapp.net';
+function onlyDigits(s) {
+    return String(s || '').replace(/[^0-9]/g, '');
+}
+
+function isLikelyPhone(num) {
+    const n = onlyDigits(num);
+    return n.length >= 8 && n.length <= 15;
+}
+
+function sameIdentity(a, b) {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    return normId(a) === normId(b);
 }
 
 function getSudoList(sessionPhone) {
@@ -33,98 +43,138 @@ function setSudoList(sessionPhone, list) {
     db.setSession(sessionPhone, 'config', 'sudo', list);
 }
 
+/** Normalize list entries to unique jids (string) */
 function cleanList(list) {
-    const seen = new Set();
     const out = [];
+    const seen = new Set();
     for (const j of list || []) {
-        const n = normNum(j);
-        if (!isRealPhone(n)) continue;
-        if (seen.has(n)) continue;
-        seen.add(n);
-        out.push(toPhoneJid(n));
+        const id = String(j || '').trim();
+        if (!id || !id.includes('@')) continue;
+        const key = normId(id) + (isLidJid(id) ? '@lid' : '@s');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(id);
     }
     return out;
 }
 
-async function tryOnWhatsApp(sock, jid) {
+async function lidToPhone(sock, lidJid) {
+    if (!lidJid) return null;
+    const lid = isLidJid(lidJid) ? lidJid : normId(lidJid) + '@lid';
+
     try {
-        const res = await sock.onWhatsApp(jid);
-        if (Array.isArray(res) && res[0]) {
-            const row = res[0];
-            if (row.jid) return row.jid;
-            if (row.exists && row.jid) return row.jid;
+        const pn = await sock.signalRepository?.lidMapping?.getPNForLID?.(lid);
+        if (pn) return pn;
+    } catch {}
+
+    try {
+        const pn = await sock.signalRepository?.lidMapping?.getPNForLID?.(normId(lid) + '@lid');
+        if (pn) return pn;
+    } catch {}
+
+    // Cache from group metadata
+    try {
+        const n = normId(lid);
+        const fromCache = resolveLid(n);
+        if (fromCache && isLikelyPhone(fromCache) && fromCache !== n) {
+            return fromCache + '@s.whatsapp.net';
         }
     } catch {}
+
+    return null;
+}
+
+async function phoneToLid(sock, phoneJid) {
+    const phone = isPhoneJid(phoneJid)
+        ? phoneJid
+        : onlyDigits(phoneJid) + '@s.whatsapp.net';
     try {
-        const pn = await sock.signalRepository?.lidMapping?.getPNForLID?.(jid);
-        if (pn) return pn;
+        const lid = await sock.signalRepository?.lidMapping?.getLIDForPN?.(phone);
+        if (lid) return lid;
     } catch {}
     return null;
 }
 
-async function resolveToPhoneJid(sock, ctx, rawJid) {
-    if (!rawJid) return null;
+async function enrichFromGroup(sock, ctx, rawJid) {
+    const ids = new Set([String(rawJid)]);
+    let phone = null;
+    let lid = null;
 
-    let num = normNum(rawJid);
+    if (isLidJid(rawJid)) lid = rawJid;
+    if (isPhoneJid(rawJid) || isLikelyPhone(rawJid)) {
+        phone = isPhoneJid(rawJid) ? rawJid : onlyDigits(rawJid) + '@s.whatsapp.net';
+    }
 
-    try {
-        const resolved = resolveLid(num);
-        if (resolved && isRealPhone(resolved)) num = resolved;
-    } catch {}
-
-    const scanParts = (participants) => {
+    const scan = (participants) => {
         try { cacheLidMappings(participants || []); } catch {}
         for (const p of participants || []) {
             const pId = String(p.id || '');
             const pLid = String(p.lid || '');
             if (
-                pId === rawJid ||
-                pLid === rawJid ||
-                normNum(pLid) === normNum(rawJid) ||
-                normNum(pId) === normNum(rawJid)
+                sameIdentity(pId, rawJid) ||
+                sameIdentity(pLid, rawJid) ||
+                (phone && sameIdentity(pId, phone)) ||
+                (phone && sameIdentity(pLid, phone))
             ) {
-                const pNum = normNum(pId);
-                if (pId.includes('@s.whatsapp.net') && isRealPhone(pNum)) return pNum;
-                try {
-                    const fromCache = resolveLid(normNum(pLid)) || resolveLid(pNum);
-                    if (fromCache && isRealPhone(fromCache)) return fromCache;
-                } catch {}
-                if (isRealPhone(pNum) && !isLidJid(pId)) return pNum;
+                if (isPhoneJid(pId)) phone = pId;
+                if (pLid && isLidJid(pLid)) lid = pLid;
+                else if (isLidJid(pId)) lid = pId;
+                if (p.lid) lid = p.lid.endsWith('@lid') ? p.lid : String(p.lid).split('@')[0] + '@lid';
             }
         }
-        return null;
     };
 
     if (ctx.isGroup) {
-        let hit = ctx.groupMeta?.participants ? scanParts(ctx.groupMeta.participants) : null;
-        if (!hit) {
-            try {
-                const meta = await sock.groupMetadata(ctx.from);
-                hit = scanParts(meta.participants || []);
-            } catch {}
-        }
-        if (hit) num = hit;
+        if (ctx.groupMeta?.participants) scan(ctx.groupMeta.participants);
+        try {
+            const meta = await sock.groupMetadata(ctx.from);
+            scan(meta.participants || []);
+        } catch {}
     }
 
-    if (!isRealPhone(num) || (isLidJid(rawJid) && num === normNum(rawJid))) {
-        const ow = await tryOnWhatsApp(sock, rawJid);
-        if (ow) {
-            const n = normNum(ow);
-            if (isRealPhone(n)) num = n;
-        }
+    if (lid && !phone) phone = await lidToPhone(sock, lid);
+    if (phone && !lid) lid = await phoneToLid(sock, phone);
+
+    if (phone) ids.add(phone);
+    if (lid) ids.add(lid);
+
+    return {
+        ids: [...ids].filter(Boolean),
+        phone: phone && isPhoneJid(phone) ? phone : null,
+        lid: lid && isLidJid(lid) ? lid : (isLidJid(rawJid) ? rawJid : null),
+    };
+}
+
+/** Pretty label for list: phone if known, else LID tag */
+async function formatEntry(sock, jid) {
+    const id = String(jid);
+    if (isPhoneJid(id) && isLikelyPhone(normId(id))) {
+        return { jid: id, label: '+' + normId(id), mention: id };
     }
-
-    if (!isRealPhone(num)) return null;
-    if (isLidJid(rawJid) && num === normNum(rawJid)) return null;
-
-    return toPhoneJid(num);
+    if (isLidJid(id)) {
+        const pn = await lidToPhone(sock, id);
+        if (pn && isLikelyPhone(normId(pn))) {
+            return {
+                jid: id,
+                label: '+' + normId(pn) + '  (lid)',
+                mention: pn,
+                phone: pn,
+            };
+        }
+        return {
+            jid: id,
+            label: 'LID ' + normId(id).slice(0, 8) + '…',
+            mention: id,
+        };
+    }
+    return { jid: id, label: normId(id), mention: id };
 }
 
 module.exports = {
     name: 'sudo',
     aliases: ['addadmin', 'grantaccess', 'trusted'],
     category: 'system',
-    desc: 'Grant/revoke sudo per paired session — real phone numbers only',
+    desc: 'Grant/revoke sudo (LID-first, shows phone when resolvable)',
     usage: '.sudo add @user | .sudo remove @user | .sudo list',
     ownerOnly: true,
 
@@ -132,7 +182,7 @@ module.exports = {
         const s = ctx.settings;
         const sessionPhone = ctx.sessionPhone;
         if (!sessionPhone) {
-            return ctx.reply('❌ No session phone on this bot instance.' + s.FOOTER);
+            return ctx.reply('❌ No session on this bot.' + s.FOOTER);
         }
 
         const themed = (key) => theme.string(sessionPhone, key, '');
@@ -141,106 +191,128 @@ module.exports = {
 
         let rawTarget = mentions[0] || null;
         if (!rawTarget && args[1]) {
-            const digits = String(args[1]).replace(/[^0-9]/g, '');
-            if (digits) rawTarget = digits + '@s.whatsapp.net';
+            const d = onlyDigits(args[1]);
+            if (d) rawTarget = d + '@s.whatsapp.net';
+            else if (String(args[1]).includes('@')) rawTarget = args[1];
         }
 
         let sudoList = cleanList(getSudoList(sessionPhone));
-        setSudoList(sessionPhone, sudoList);
 
         if (sub === 'add') {
             if (!rawTarget) {
                 return ctx.reply(
-                    '❌ Tag a user or pass a number.\n' +
-                    '`' + s.prefix + 'sudo add @user`\n' +
-                    '`' + s.prefix + 'sudo add 2348012345678`\n\n' +
-                    '_If tag fails (LID), use the full international number._' +
+                    '❌ Tag someone in the group (best method):\n' +
+                    '`' + s.prefix + 'sudo add @user`\n\n' +
+                    'Or number (may fail if WA only uses LID):\n' +
+                    '`' + s.prefix + 'sudo add 234xxxxxxxxxx`' +
                     s.FOOTER
                 );
             }
 
-            const target = await resolveToPhoneJid(sock, ctx, rawTarget);
-            if (!target) {
-                return ctx.reply(
-                    '❌ Could not resolve a *real* phone number (WhatsApp sent a LID).\n' +
-                    'Use: `' + s.prefix + 'sudo add 234xxxxxxxxxx`' +
-                    s.FOOTER
-                );
-            }
+            const enriched = await enrichFromGroup(sock, ctx, rawTarget);
+            // Prefer storing LID (what WA sends on messages) + phone if known
+            const toAdd = [];
+            if (enriched.lid) toAdd.push(enriched.lid);
+            if (enriched.phone) toAdd.push(enriched.phone);
+            if (!toAdd.length) toAdd.push(rawTarget);
 
-            const targetNum = normNum(target);
-            if (sudoList.some((j) => normNum(j) === targetNum)) {
-                return ctx.reply(
-                    '⚠️ @' + targetNum + ' already has sudo on this session.' + s.FOOTER,
-                    { mentions: [target] }
-                );
+            let added = 0;
+            for (const j of toAdd) {
+                if (!sudoList.some((x) => sameIdentity(x, j))) {
+                    sudoList.push(j);
+                    added++;
+                }
             }
-
-            sudoList.push(target);
             sudoList = cleanList(sudoList);
             setSudoList(sessionPhone, sudoList);
 
+            if (!added) {
+                return ctx.reply('⚠️ Already sudo on this session.' + s.FOOTER);
+            }
+
+            const fmt = await formatEntry(sock, enriched.lid || enriched.phone || rawTarget);
+            const lines = [
+                '✅ *' + (themed('sudo') || 'Sudo granted') + '* (this session)',
+                fmt.label,
+            ];
+            if (enriched.lid) lines.push('ID: `' + enriched.lid + '`');
+            if (enriched.phone) lines.push('Number: `' + normId(enriched.phone) + '`');
+            lines.push('_Matched by WhatsApp ID (LID/phone)._');
+
             return ctx.reply(
-                '✅ *' + (themed('sudo') || 'Sudo granted') + '* (this session only)\n' +
-                '@' + targetNum + '\n`' + targetNum + '`' + s.FOOTER,
-                { mentions: [target] }
+                lines.join('\n') + s.FOOTER,
+                { mentions: [fmt.mention].filter(Boolean) }
             );
         }
 
         if (sub === 'remove' || sub === 'revoke') {
             if (!rawTarget) {
                 return ctx.reply(
-                    '❌ Tag a user or pass a number.\n`' +
-                    s.prefix + 'sudo remove 234xxxxxxxxxx`' + s.FOOTER
+                    '❌ Tag user or pass id/number.\n`' +
+                    s.prefix + 'sudo remove @user`' + s.FOOTER
                 );
             }
 
-            const target = await resolveToPhoneJid(sock, ctx, rawTarget);
-            const targetNum = target ? normNum(target) : normNum(rawTarget);
-            if (!isRealPhone(targetNum)) {
-                return ctx.reply('❌ Invalid number.' + s.FOOTER);
-            }
+            const enriched = await enrichFromGroup(sock, ctx, rawTarget);
+            const keys = new Set(
+                [rawTarget, enriched.lid, enriched.phone, ...enriched.ids]
+                    .filter(Boolean)
+                    .map(normId)
+            );
 
             const before = sudoList.length;
-            sudoList = sudoList.filter((j) => normNum(j) !== targetNum);
+            sudoList = sudoList.filter((j) => !keys.has(normId(j)));
             if (sudoList.length === before) {
-                return ctx.reply(
-                    '❌ `' + targetNum + '` is not in this session sudo list.' + s.FOOTER
-                );
+                return ctx.reply('❌ Not in this session sudo list.' + s.FOOTER);
             }
 
             setSudoList(sessionPhone, sudoList);
             return ctx.reply(
-                '✅ *' + (themed('sudo') || 'Sudo revoked') + '*\n`' + targetNum + '`' + s.FOOTER,
-                { mentions: target ? [target] : [] }
+                '✅ *' + (themed('sudo') || 'Sudo revoked') + '*' + s.FOOTER
             );
         }
 
         if (sub === 'list') {
+            setSudoList(sessionPhone, sudoList);
             if (!sudoList.length) {
                 return ctx.reply(
-                    '📋 *Sudo Users (this session):* None\n\n' +
-                    '`' + s.prefix + 'sudo add 234...`' + s.FOOTER
+                    '📋 *Sudo (this session):* None\n\n' +
+                    'Best: `' + s.prefix + 'sudo add @user` in a group' +
+                    s.FOOTER
                 );
             }
 
-            const list = sudoList
-                .map((j, i) => (i + 1) + '. @' + normNum(j) + '\n    `' + normNum(j) + '`')
-                .join('\n');
+            // Dedupe display by normId (lid+phone same person once)
+            const shown = new Set();
+            const lines = [];
+            const mentionList = [];
+            let i = 1;
+            for (const j of sudoList) {
+                const k = normId(j);
+                if (shown.has(k)) continue;
+                // if we also have phone for same person, formatEntry prefers phone label
+                const fmt = await formatEntry(sock, j);
+                shown.add(k);
+                if (fmt.phone) shown.add(normId(fmt.phone));
+                lines.push(i + '. ' + fmt.label);
+                if (isLidJid(j)) lines.push('    `' + j + '`');
+                if (fmt.phone) lines.push('    `+' + normId(fmt.phone) + '`');
+                mentionList.push(fmt.mention);
+                i++;
+            }
 
             return ctx.reply(
-                '👑 *Sudo Users (' + sudoList.length + ')* — this session\n\n' +
-                list + s.FOOTER,
-                { mentions: sudoList }
+                '👑 *Sudo Users (' + (i - 1) + ')* — this session\n\n' +
+                lines.join('\n') + s.FOOTER,
+                { mentions: mentionList.filter(Boolean) }
             );
         }
 
         return ctx.reply(
             menuBox('👑', 'sᴜᴅᴏ', [
-                '`' + s.prefix + 'sudo add 234…` — Grant (real number)',
-                '`' + s.prefix + 'sudo add @user` — Grant if tag resolves',
-                '`' + s.prefix + 'sudo remove 234…` — Revoke',
-                '`' + s.prefix + 'sudo list` — List (per session)',
+                '`' + s.prefix + 'sudo add @user` — Grant (stores LID)',
+                '`' + s.prefix + 'sudo remove @user` — Revoke',
+                '`' + s.prefix + 'sudo list` — List (phone if known)',
             ]) + s.FOOTER
         );
     },
