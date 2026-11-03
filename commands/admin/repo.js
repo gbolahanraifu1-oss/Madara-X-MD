@@ -4,10 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
-const REPO_OWNER = 'madarawisdom2007-beep';
-const REPO_NAME = 'MADARA_MD';
+const REPO_OWNER = 'gbolahanraifu1-oss';
+const REPO_NAME = 'Madara-X-MD/tree/legacy-before-v1.2';
 const REPO_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}`;
-const CREATOR = 'MADARA';
+const CREATOR = '𝙼𝙰𝙳𝙰𝚁𝙰𝐃𝐄𝐕';
 const IMAGE_PATH = path.join(__dirname, '../../assets/repo/madara-repo.png');
 
 function githubRepoStats() {
@@ -70,7 +70,7 @@ function caption(stats, mention = 'MADARA X-MD') {
     return [
         '╭─⌈ `MADARA X-MD` ⌋',
         '│',
-        '│ ✧ *Name* : MADARA_MD',
+        '│ ✧ *Name* : MADARA X-MD',
         `│ ✧ *Owner* : ${CREATOR}`,
         `│ ✧ *Stars* : ${number(stats.stars)} ⭐`,
         `│ ✧ *Forks* : ${number(stats.forks)} 🍴`,
