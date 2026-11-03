@@ -1,70 +1,78 @@
-/**
- * MentionReact — Owner & Mod command
- * Owner: .mentionreact set 🔥  → reacts when OWNER is tagged
- * Mod:   .mentionreact set 💻  → reacts when THAT MOD is tagged
- *
- * Usage:
- *   .mentionreact set <emoji>  — enable with emoji
- *   .mentionreact off          — disable
- *   .mentionreact status       — show setting
- */
+'use strict';
 
 const database = require('../../utils/database');
+
+function resolveSessionPhone(sock, ctx) {
+    return String(
+        ctx?.sessionPhone
+        || sock?._sessionPhone
+        || sock?.user?.id
+        || ''
+    )
+        .split(':')[0]
+        .split('@')[0]
+        .replace(/\D/g, '');
+}
+
+function digits(jidOrNum) {
+    return String(jidOrNum || '').split('@')[0].split(':')[0].replace(/\D/g, '');
+}
 
 module.exports = {
     name: 'mentionreact',
     aliases: ['mreact', 'mentionreaction'],
-    description: 'Auto-react when someone mentions you in a group',
     category: 'owner',
+    desc: 'Auto-react when someone mentions you (per session)',
+    usage: '.mentionreact set <emoji> | .mentionreact off | .mentionreact status',
 
-    async execute({ reply, args, phoneNumber, sender, isOwner, isMod }) {
-        if (!isOwner && !isMod) return reply('❌ Owner or Mod only!');
+    async execute(sock, msg, args, ctx) {
+        const s = ctx.settings;
+        if (!ctx.isOwner && !ctx.isSudo) {
+            return ctx.reply('⛔ Owner / sudo only.' + s.FOOTER);
+        }
 
-        // Owner messages may arrive with an @lid JID. The session phone number
-        // is the authoritative identity for the linked owner; storing the LID
-        // here makes the runtime lookup (which uses the real owner number) miss.
-        const senderPhone = String(sender || '').split('@')[0].split(':')[0].replace(/\D/g, '');
-        // The dispatcher exposes owner-level permission to mods too, so use
-        // isMod separately: only the actual primary owner uses phoneNumber.
-        const userPhone = isMod
-            ? senderPhone
-            : String(phoneNumber || '').replace(/\D/g, '');
-        const action = (args[0] || '').toLowerCase();
-        const current = database.getMentionReact(phoneNumber, userPhone);
+        const sessionPn = resolveSessionPhone(sock, ctx);
+        if (!sessionPn) {
+            return ctx.reply('❌ Could not resolve this bot session.' + s.FOOTER);
+        }
+
+        const senderPn = digits(ctx.sender);
+        const userPhone = ctx.isOwner ? sessionPn : senderPn;
+        const action = String(args[0] || 'status').toLowerCase();
+        const current = database.getMentionReact(sessionPn, userPhone);
 
         if (!action || action === 'status') {
-            return reply(
-                `╔══════════════════════════╗\n` +
-                `║   ⚡ *MENTION REACT*      ║\n` +
-                `╚══════════════════════════╝\n\n` +
-                `Status: ${current?.enabled ? `✅ ON  —  ${current.emoji}` : '❌ OFF'}\n\n` +
-                `*Usage:*\n` +
-                `▸ .mentionreact set 🔥\n` +
-                `▸ .mentionreact off\n` +
-                `▸ .mentionreact status\n\n` +
-                `_Whenever someone tags you in a group, the bot reacts with your chosen emoji._`
+            return ctx.reply(
+                '*Mention React* (session `' + sessionPn + '`)\n' +
+                'For: `' + userPhone + '`\n' +
+                'Status: ' + (current?.enabled ? '✅ ON — ' + current.emoji : '❌ OFF') + '\n\n' +
+                '`' + s.prefix + 'mentionreact set 🔥`\n' +
+                '`' + s.prefix + 'mentionreact off`\n' +
+                '`' + s.prefix + 'mentionreact status`' +
+                s.FOOTER
             );
         }
 
         if (action === 'off' || action === 'disable') {
-            database.setMentionReact(phoneNumber, { enabled: false, emoji: current?.emoji || '👀' }, userPhone);
-            return reply('❌ *Mention React DISABLED*');
+            database.setMentionReact(sessionPn, { enabled: false, emoji: current?.emoji || '👀' }, userPhone);
+            return ctx.reply('❌ Mention React *OFF* (session `' + sessionPn + '`)' + s.FOOTER);
         }
 
         if (action === 'set' || action === 'on') {
-            const emoji = args[1]?.trim();
-            if (!emoji) return reply('❌ Provide an emoji!\n\nExample: `.mentionreact set 🔥`');
-            database.setMentionReact(phoneNumber, { enabled: true, emoji }, userPhone);
-            return reply(`✅ *Mention React set to ${emoji}*\n\n_Bot will react with ${emoji} whenever someone tags you._`);
+            const emoji = (args[1] || '').trim();
+            if (!emoji) {
+                return ctx.reply('Usage: `' + s.prefix + 'mentionreact set 🔥`' + s.FOOTER);
+            }
+            database.setMentionReact(sessionPn, { enabled: true, emoji }, userPhone);
+            return ctx.reply('✅ Mention React *ON* — ' + emoji + ' (session `' + sessionPn + '`)' + s.FOOTER);
         }
 
-        // Shortcut: .mentionreact 🔥
-        const emoji = args[0]?.trim();
+        const emoji = String(args[0] || '').trim();
         if (emoji) {
-            database.setMentionReact(phoneNumber, { enabled: true, emoji }, userPhone);
-            return reply(`✅ *Mention React set to ${emoji}*`);
+            database.setMentionReact(sessionPn, { enabled: true, emoji }, userPhone);
+            return ctx.reply('✅ Mention React *ON* — ' + emoji + ' (session `' + sessionPn + '`)' + s.FOOTER);
         }
 
-        return reply('❓ Usage: `.mentionreact set <emoji>` | `.mentionreact off`');
+        return ctx.reply('Usage: `' + s.prefix + 'mentionreact set <emoji>` | `off` | `status`' + s.FOOTER);
     },
 };
