@@ -84,7 +84,6 @@ module.exports = {
             );
         }
 
-        // .autoreact 🔥
         if (args[0]) {
             const emoji = String(args[0]).trim();
             database.setAutoReact(pn, { enabled: true, emoji, random: false });
