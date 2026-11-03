@@ -167,9 +167,9 @@ async function execute(sock, msg, args, ctx) {
 
     var str =
         '❤️ *_ʜᴇʟʟᴏ ' + name + ', ' + greeting() + '!_* 🥳\n' +
-        '╭═══〘 𝑴𝑨𝑫𝑨𝑹𝑨 𝑿-𝑴𝑫 〙═══⊷❍\n' +
+        '╭═══〘 𝑴𝑨𝑫𝑨𝑹𝑨 𝑿-𝑴𝑫 〙═⊷❍\n' +
         '┃✰│𝙽𝚊𝚖𝚎: ' + sc(s.botName) + '\n' +
-        '┃✰│𝚃𝚘𝚝𝚊𝚕: 700+ ғᴇᴀᴛᴜʀᴇs\n' +
+        '┃✰│𝚃𝚘𝚝𝚊𝚕: 1688+ ғᴇᴀᴛᴜʀᴇs\n' +
         '┃✰│ᴠᴇʀꜱɪᴏɴ: v' + sc(s.version) + '\n' +
         '┃✰│ᴏᴡɴᴇʀ: *' + sc(s.ownerName) + '*\n' +
         '┃✰│ᴘʀᴇꜰɪx: *' + prefix + '*\n' +
