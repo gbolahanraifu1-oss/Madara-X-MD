@@ -6,7 +6,7 @@ module.exports = {
     name: 'boxstyle',
     aliases: ['setboxstyle', 'replybox'],
     category: 'system',
-    description: 'Choose the bot reply box design',
+    description: 'Choose which frame is used when auto-frame is ON',
     usage: '.boxstyle menubox|stylebox',
     ownerOnly: true,
     async execute(sock, msg, args, ctx) {
@@ -16,26 +16,34 @@ module.exports = {
         const prefix = ctx.settings?.prefix || '.';
         const footer = ctx.settings?.FOOTER || '';
         const current = database.getBoxStyle(phone);
+        const auto = database.getAutoFrame(phone) ? 'ON' : 'OFF';
         const input = String(args?.[0] || '').trim().toLowerCase();
-        const styles = {
-            menu: 'menuBox',
-            menubox: 'menuBox',
-            'menu-box': 'menuBox',
-            style: 'styleBox',
-            stylebox: 'styleBox',
-            'style-box': 'styleBox',
-            default: 'menuBox',
-        };
+
         if (!input || input === 'show' || input === 'list') {
-            return ctx.reply(`🧱 *Outgoing box style*\nCurrent: *${current}*\n\n${prefix}boxstyle menubox — MenuBox (default)\n${prefix}boxstyle stylebox — StyleBox\n${prefix}boxstyle default — reset to MenuBox${footer}`);
+            return ctx.reply(
+                `🧱 *Box style*\n` +
+                `Current style: *${current}*\n` +
+                `Auto-frame: *${auto}*  (.autoframe on|off)\n\n` +
+                `${prefix}boxstyle menubox — MenuBox frame\n` +
+                `${prefix}boxstyle stylebox — StyleBox frame\n\n` +
+                `_This only applies when auto-frame is ON, or inside commands that call menuBox()._` +
+                footer
+            );
         }
 
-        const selected = styles[input];
+        const selected = database.setBoxStyle(phone, input);
         if (!selected) {
-            return ctx.reply(`❌ Choose *menubox* or *stylebox*.\nUsage: ${prefix}boxstyle menubox|stylebox${footer}`);
+            return ctx.reply(
+                `❌ Choose *menubox* or *stylebox*.\n` +
+                `Usage: ${prefix}boxstyle menubox|stylebox` +
+                footer
+            );
         }
 
-        database.setBoxStyle(phone, selected);
-        return ctx.reply(`✅ Reply box style set to *${selected}*.${footer}`);
+        return ctx.reply(
+            `✅ Box style set to *${selected}*.\n` +
+            `Auto-frame is *${auto}* — use \`${prefix}autoframe on\` to wrap plain replies.` +
+            footer
+        );
     },
 };
