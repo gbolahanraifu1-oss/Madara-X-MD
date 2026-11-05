@@ -1,8 +1,13 @@
 'use strict';
 
+/**
+ * Chatbot — auto AI replies when tagged / replied to.
+ * Uses the Madara AI stack (commands/ai/ai.js). OpenAI is not the default.
+ */
+
 const db = require('../../lib/db');
 const { wasSentByBot } = require('../../lib/sentTracker');
-const { askProviderWithFallback } = require('../ai/ai');
+const { askProviderWithFallback, providerLabel } = require('../ai/ai');
 const { sendInteractiveList } = require('../../lib/baileysHelper');
 
 const PERSONALITIES = {
@@ -24,15 +29,13 @@ const PERSONALITIES = {
     },
 };
 
-const PROVIDERS = ['openai', 'grok', 'claude'];
+// Madara-first. openai only if user explicitly picks it.
+const PROVIDERS = ['madara', 'grok', 'claude', 'openai'];
 const GLOBAL_GROUPS_KEY = 'groups';
 const pendingChats = new Set();
 const cooldowns = new Map();
 
 function getKey(ctx) {
-    // The remote JID is stable for both sides of a private chat.  `sender`
-    // can change between PN and LID forms, which was why DM toggles appeared
-    // to work but later messages were ignored.
     return ctx.from;
 }
 
@@ -65,14 +68,15 @@ function cleanMention(text, sock) {
 }
 
 function selectedTone(key) {
-    return PERSONALITIES[db.get('chatbot_mode', key, 'warm')]
-        ? db.get('chatbot_mode', key, 'warm')
-        : 'warm';
+    const tone = db.get('chatbot_mode', key, 'warm');
+    return PERSONALITIES[tone] ? tone : 'warm';
 }
 
 function selectedProvider(key) {
-    const provider = db.get('chatbot_provider', key, process.env.DEFAULT_AI_PROVIDER || 'grok');
-    return PROVIDERS.includes(provider) ? provider : 'grok';
+    const raw = String(db.get('chatbot_provider', key, process.env.DEFAULT_AI_PROVIDER || 'madara') || 'madara').toLowerCase();
+    if (raw === 'xai') return 'grok';
+    if (PROVIDERS.includes(raw)) return raw;
+    return 'madara';
 }
 
 function groupResponseEnabled() {
@@ -89,16 +93,15 @@ function isReplyToBot(msg, sock) {
 }
 
 async function handleChatbot(sock, msg, ctx) {
-    const { from, body, isGroup } = ctx;
     if (msg.key.fromMe && wasSentByBot(msg.key.id)) return false;
 
     const key = getKey(ctx);
-    if (isGroup && !groupResponseEnabled()) return false;
+    if (ctx.isGroup && !groupResponseEnabled()) return false;
     if (!db.get('chatbot', key, false)) return false;
 
     const botTagged = (ctx.getMentions?.() || []).some(jid => matchesBot(jid, sock));
     const repliedToBot = isReplyToBot(msg, sock);
-    if (isGroup && !botTagged && !repliedToBot) return false;
+    if (ctx.isGroup && !botTagged && !repliedToBot) return false;
 
     const input = cleanMention(textFromMessage(ctx) || quotedText(ctx), sock);
     if (!input) return false;
@@ -107,14 +110,21 @@ async function handleChatbot(sock, msg, ctx) {
     if (pendingChats.has(key) || (cooldowns.get(key) || 0) > now) return false;
     pendingChats.add(key);
     cooldowns.set(key, now + 2500);
+
     const tone = selectedTone(key);
     const provider = selectedProvider(key);
+
     try {
         const answer = await askProviderWithFallback(provider, input, tone);
-        return ctx.reply({ text: `🤖 *${PERSONALITIES[tone].label}*\n\n${answer.slice(0, 6000)}` });
+        const engine = providerLabel ? providerLabel(provider) : 'ᴍᴀᴅᴀʀᴀ ᴀɪ';
+        return ctx.reply(
+            `🔴 *ᴍᴀᴅᴀʀᴀ ᴀɪ* · ${PERSONALITIES[tone].label}\n` +
+            `_engine: ${engine}_\n\n` +
+            `${String(answer).slice(0, 6000)}`
+        );
     } catch (error) {
         console.error(`[chatbot:${provider}]`, error.message);
-        return ctx.reply(`❌ ᴄʜᴀᴛʙᴏᴛ ᴄᴏᴜʟᴅ ɴᴏᴛ ʀᴇsᴘᴏɴᴅ: ${String(error.message).slice(0, 240)}`);
+        return ctx.reply(`❌ ᴍᴀᴅᴀʀᴀ ᴀɪ ᴄᴏᴜʟᴅ ɴᴏᴛ ʀᴇsᴘᴏɴᴅ: ${String(error.message).slice(0, 240)}`);
     } finally {
         pendingChats.delete(key);
     }
@@ -169,38 +179,48 @@ module.exports = {
     name: 'chatbot',
     aliases: ['chat', 'cb', 'togglechatbot', 'chatbotmode'],
     category: 'utility',
-    desc: 'ᴜsᴇ ᴀɪ ᴡʜᴇɴ ᴛᴀɢɢᴇᴅ ᴏʀ ʀᴇᴘʟɪᴇᴅ ᴛᴏ',
-    usage: '†chatbot on|off|mode|provider|groups|response|status',
+    desc: 'Madara AI auto-replies when tagged or replied to',
+    usage: '.chatbot on|off|mode|provider|groups|response|status',
 
     async execute(sock, msg, args, ctx) {
         const s = ctx.settings;
         const sub = String(args[0] || 'status').toLowerCase();
         const key = getKey(ctx);
+        const foot = s.FOOTER || '';
 
         if (sub === 'on' || sub === 'off') {
             const enabled = sub === 'on';
             db.set('chatbot', key, enabled);
             return ctx.reply(
-                `🤖 *ᴄʜᴀᴛʙᴏᴛ: ${enabled ? 'ᴏɴ' : 'ᴏғғ'}*\n\n` +
-                (enabled ? 'ᴛᴀɢ ᴍᴇ ᴏʀ ʀᴇᴘʟʏ ᴛᴏ ᴍʏ ᴍᴇssᴀɢᴇs ᴀɴᴅ ɪ ᴡɪʟʟ ʀᴇsᴘᴏɴᴅ.' : 'ɪ ᴡɪʟʟ ɴᴏᴛ ʀᴇsᴘᴏɴᴅ ᴡɪᴛʜ ᴀᴜᴛᴏᴍᴀᴛɪᴄ ᴀɪ ʀᴇᴘʟɪᴇs.') +
-                `\n\nᴛᴏɴᴇ: ${PERSONALITIES[selectedTone(key)].label}${s.FOOTER}`
+                `🔴 *ᴍᴀᴅᴀʀᴀ ᴀɪ ᴄʜᴀᴛʙᴏᴛ: ${enabled ? 'ᴏɴ' : 'ᴏғғ'}*\n\n` +
+                (enabled
+                    ? 'ᴛᴀɢ ᴍᴇ ᴏʀ ʀᴇᴘʟʏ ᴛᴏ ᴍʏ ᴍᴇssᴀɢᴇs ᴀɴᴅ ɪ ᴡɪʟʟ ʀᴇsᴘᴏɴᴅ.'
+                    : 'ɪ ᴡɪʟʟ ɴᴏᴛ ʀᴇsᴘᴏɴᴅ ᴡɪᴛʜ ᴀᴜᴛᴏᴍᴀᴛɪᴄ ᴀɪ ʀᴇᴘʟɪᴇs.') +
+                `\n\nᴛᴏɴᴇ: ${PERSONALITIES[selectedTone(key)].label}` +
+                `\nᴇɴɢɪɴᴇ: ${selectedProvider(key)}` +
+                foot
             );
         }
 
         if (sub === 'mode' || sub === 'tone') {
             const tone = String(args[1] || '').toLowerCase();
             if (!PERSONALITIES[tone]) {
-                return ctx.reply(`❌ ᴜsᴇ: ${s.prefix}chatbot mode warm|savage|cold|deadly${s.FOOTER}`);
+                return ctx.reply(`❌ ᴜsᴇ: ${s.prefix}chatbot mode warm|savage|cold|deadly${foot}`);
             }
             db.set('chatbot_mode', key, tone);
-            return ctx.reply(`✅ ᴄʜᴀᴛʙᴏᴛ ᴛᴏɴᴇ sᴇᴛ ᴛᴏ ${PERSONALITIES[tone].label}.${s.FOOTER}`);
+            return ctx.reply(`✅ ᴄʜᴀᴛʙᴏᴛ ᴛᴏɴᴇ sᴇᴛ ᴛᴏ ${PERSONALITIES[tone].label}.${foot}`);
         }
 
         if (sub === 'provider') {
             const provider = String(args[1] || '').toLowerCase();
-            if (!PROVIDERS.includes(provider)) return ctx.reply(`❌ ᴜsᴇ: ${s.prefix}chatbot provider openai|grok|claude${s.FOOTER}`);
+            if (!PROVIDERS.includes(provider)) {
+                return ctx.reply(
+                    `❌ ᴜsᴇ: ${s.prefix}chatbot provider madara|grok|claude|openai\n` +
+                    `_Default is madara (recommended)._${foot}`
+                );
+            }
             db.set('chatbot_provider', key, provider);
-            return ctx.reply(`✅ ᴄʜᴀᴛʙᴏᴛ ᴘʀᴏᴠɪᴅᴇʀ sᴇᴛ ᴛᴏ ${provider}.${s.FOOTER}`);
+            return ctx.reply(`✅ ᴄʜᴀᴛʙᴏᴛ ᴇɴɢɪɴᴇ sᴇᴛ ᴛᴏ *${provider}*.${foot}`);
         }
 
         if (sub === 'list' || (sub === 'groups' && ['list', ''].includes(args[1] || ''))) {
@@ -210,10 +230,10 @@ module.exports = {
         if (sub === 'response' || sub === 'groups') {
             const value = String(args[1] || '').toLowerCase();
             if (!['on', 'off'].includes(value)) {
-                return ctx.reply(`❌ ᴜsᴇ: ${s.prefix}chatbot response on|off${s.FOOTER}`);
+                return ctx.reply(`❌ ᴜsᴇ: ${s.prefix}chatbot response on|off${foot}`);
             }
             db.set('chatbot_global', GLOBAL_GROUPS_KEY, value === 'on');
-            return ctx.reply(`✅ ɢʀᴏᴜᴘ ᴀɪ ʀᴇsᴘᴏɴsᴇs ᴀʀᴇ ${value === 'on' ? 'ᴏɴ' : 'ᴏғғ'} ғᴏʀ ᴀʟʟ ɢʀᴏᴜᴘs.${s.FOOTER}`);
+            return ctx.reply(`✅ ɢʀᴏᴜᴘ ᴀɪ ʀᴇsᴘᴏɴsᴇs ᴀʀᴇ ${value === 'on' ? 'ᴏɴ' : 'ᴏғғ'} ғᴏʀ ᴀʟʟ ɢʀᴏᴜᴘs.${foot}`);
         }
 
         if (sub === 'group') {
@@ -221,23 +241,24 @@ module.exports = {
             if (ctx.isGroup && (!value || ['on', 'off'].includes(value))) {
                 const enabled = value === 'on';
                 db.set('chatbot', ctx.from, enabled);
-                return ctx.reply(`✅ ᴄʜᴀᴛʙᴏᴛ ɪs ${enabled ? 'ᴏɴ' : 'ᴏғғ'} ɪɴ ᴛʜɪs ɢʀᴏᴜᴘ.${s.FOOTER}`);
+                return ctx.reply(`✅ ᴄʜᴀᴛʙᴏᴛ ɪs ${enabled ? 'ᴏɴ' : 'ᴏғғ'} ɪɴ ᴛʜɪs ɢʀᴏᴜᴘ.${foot}`);
             }
             return listGroups(sock, msg, ctx);
         }
 
         const enabled = db.get('chatbot', key, false);
         return ctx.reply(
-            `🤖 *ᴄʜᴀᴛʙᴏᴛ sᴛᴀᴛᴜs*\n\n` +
+            `🔴 *ᴍᴀᴅᴀʀᴀ ᴀɪ ᴄʜᴀᴛʙᴏᴛ*\n\n` +
             `sᴛᴀᴛᴜs: ${enabled ? 'ᴏɴ' : 'ᴏғғ'}\n` +
             `ᴛᴏɴᴇ: ${PERSONALITIES[selectedTone(key)].label}\n` +
-            `ᴘʀᴏᴠɪᴅᴇʀ: ${selectedProvider(key)}\n` +
+            `ᴇɴɢɪɴᴇ: ${selectedProvider(key)}\n` +
             `ɢʀᴏᴜᴘ ʀᴇsᴘᴏɴsᴇs: ${groupResponseEnabled() ? 'ᴏɴ' : 'ᴏғғ'}\n\n` +
             `${s.prefix}chatbot on|off\n` +
             `${s.prefix}chatbot mode warm|savage|cold|deadly\n` +
-            `${s.prefix}chatbot provider openai|grok|claude\n` +
+            `${s.prefix}chatbot provider madara|grok|claude\n` +
             `${s.prefix}chatbot groups list\n` +
-            `${s.prefix}chatbot response on|off${s.FOOTER}`
+            `${s.prefix}chatbot response on|off` +
+            foot
         );
     },
 
