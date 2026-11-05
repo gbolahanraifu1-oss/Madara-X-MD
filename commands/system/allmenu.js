@@ -3,7 +3,7 @@
 import { generateWAMessageFromContent, isJidGroup } from '@itsliaaa/baileys'
 import { prepareRichResponseMessage } from '@itsliaaa/baileys/lib/Utils/rich-message-utils.js'
 import crypto from 'crypto'
-import font from '@/functions/font.js'
+disclaimerText 'x'
 
 export const name = 'allmenu'
 export const aliases = ['allcmds', 'allcommands', 'cmdlist']
