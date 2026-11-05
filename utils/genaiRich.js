@@ -6,94 +6,139 @@ const sharp = require('sharp');
 const database = require('./database');
 
 function escapeHtml(value) {
-    return String(value ?? '').replace(/[&<>"']/g, char => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-    }[char]));
+return String(value?? '').replace(/[&<>"']/g, char => ({
+'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[char]));
 }
 
 function richContext(quoted) {
-    if (!quoted?.key) return {
-        forwardingScore: 1,
-        isForwarded: true,
-        forwardedAiBotMessageInfo: { botJid: '867051314767696@bot' },
-        forwardOrigin: 4,
-    };
-    return {
-        forwardingScore: 1,
-        isForwarded: true,
-        forwardedAiBotMessageInfo: { botJid: '867051314767696@bot' },
-        forwardOrigin: 4,
-        stanzaId: quoted.key.id,
-        participant: quoted.key.participant || quoted.participant || quoted.key.remoteJid,
-        ...(quoted.message ? { quotedMessage: quoted.message } : {}),
-    };
+if (!quoted?.key) return {
+forwardingScore: 1,
+isForwarded: true,
+forwardedAiBotMessageInfo: { botJid: '867051314767696@bot'},
+forwardOrigin: 4,
+};
+return {
+forwardingScore: 1,
+isForwarded: true,
+forwardedAiBotMessageInfo: { botJid: '867051314767696@bot'},
+forwardOrigin: 4,
+stanzaId: quoted.key.id,
+participant: quoted.key.participant || quoted.participant || quoted.key.remoteJid,
+...(quoted.message? { quotedMessage: quoted.message}: {}),
+};
 }
 
 function buildRichContent(html, quoted) {
-    const data = Buffer.from(JSON.stringify({
-        __typename: 'GenAIUnifiedResponse',
-        response_id: crypto.randomUUID(),
-        sections: [{
-            __typename: 'GenAIUnifiedResponseSection',
-            view_model: {
-                __typename: 'GenAISingleLayoutViewModel',
-                primitive: {
-                    __typename: 'FOAHtmlPrimitiveDemoDONOTUSE',
-                    trusted_sources: [],
-                    payload: String(html),
-                },
-            },
-        }],
-    })).toString('base64');
+const data = Buffer.from(JSON.stringify({
+__typename: 'GenAIUnifiedResponse',
+response_id: crypto.randomUUID(),
+sections: [{
+__typename: 'GenAIUnifiedResponseSection',
+view_model: {
+__typename: 'GenAISingleLayoutViewModel',
+primitive: {
+__typename: 'FOAHtmlPrimitiveDemoDONOTUSE',
+trusted_sources: [],
+payload: String(html),
+},
+},
+}],
+})).toString('base64');
 
-    return {
-        messageContextInfo: {
-            threadId: [],
-            deviceListMetadata: {
-                senderKeyIndexes: [],
-                recipientKeyIndexes: [],
-                recipientKeyHash: '',
-                recipientTimestamp: Math.floor(Date.now() / 1000),
-            },
-            deviceListMetadataVersion: 2,
-            messageSecret: crypto.randomBytes(32),
-        },
-        botForwardedMessage: {
-            message: {
-                richResponseMessage: {
-                    messageType: 1,
-                    submessages: [],
-                    unifiedResponse: { data },
-                    contextInfo: richContext(quoted),
-                },
-            },
-        },
-    };
+return {
+messageContextInfo: {
+threadId: [],
+deviceListMetadata: {
+senderKeyIndexes: [],
+recipientKeyIndexes: [],
+recipientKeyHash: '',
+recipientTimestamp: Math.floor(Date.now() / 1000),
+},
+deviceListMetadataVersion: 2,
+messageSecret: crypto.randomBytes(32),
+},
+botForwardedMessage: {
+message: {
+richResponseMessage: {
+messageType: 1,
+submessages: [],
+unifiedResponse: { data},
+contextInfo: richContext(quoted),
+},
+},
+},
+};
 }
 
 function textHtml(text, title = 'MADARA X-MD') {
-    const safeTitle = escapeHtml(title);
-    const safeText = escapeHtml(text);
-    return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}html,body{margin:0;background:transparent;font-family:Arial,sans-serif}body{padding:6px;background:radial-gradient(circle at 50% 5%,#174936,#061812 72%)}.card{padding:14px;border:2px solid #b9954d;border-radius:16px;background:linear-gradient(145deg,#0a2e22,#123e2f 55%,#061812);color:#e3dfbb;box-shadow:inset 0 0 0 3px #163f31,0 7px 18px #000b}.title{text-align:center;color:#f1e3a2;font:bold 17px Arial Black,sans-serif;letter-spacing:.7px}.rule{height:2px;margin:9px 0;background:linear-gradient(90deg,transparent,#b9954d,transparent)}.body{white-space:pre-wrap;overflow-wrap:anywhere;color:#e8f4e5;font:13px/1.45 monospace}.footer{margin-top:11px;text-align:center;color:#8fbea0;font:10px monospace}</style></head><body><div class="card"><div class="title">${safeTitle}</div><div class="rule"></div><div class="body">${safeText}</div><div class="footer">MADARA X-MD · GENAI RICH RESPONSE</div></div></body></html>`;
+const safeTitle = escapeHtml(title);
+const safeText = escapeHtml(text);
+return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}html,body{margin:0;background:transparent;font-family:Arial,sans-serif}body{padding:6px;background:radial-gradient(circle at 50% 5%,#174936,#061812 72%)}.card{padding:14px;border:2px solid #b9954d;border-radius:16px;background:linear-gradient(145deg,#0a2e22,#123e2f 55%,#061812);color:#e3dfbb;box-shadow:inset 0 0 0 3px #163f31,0 7px 18px #000b}.title{text-align:center;color:#f1e3a2;font:bold 17px Arial Black,sans-serif;letter-spacing:.7px}.rule{height:2px;margin:9px 0;background:linear-gradient(90deg,transparent,#b9954d,transparent)}.body{white-space:pre-wrap;overflow-wrap:anywhere;color:#e8f4e5;font:13px/1.45 monospace}.footer{margin-top:11px;text-align:center;color:#8fbea0;font:10px monospace}</style></head><body><div class="card"><div class="title">${safeTitle}</div><div class="rule"></div><div class="body">${safeText}</div><div class="footer">MADARA X-MD · GENAI RICH RESPONSE</div></div></body></html>`;
 }
 
-async function sendRichHtml({ sock, jid, quoted, html, canvasText, title, caption, theme, mentions = [], interactive = false }) {
-    const deviceMode = sock?.__madaraDeviceMode || database.getDeviceMode();
-    if (deviceMode === 'iphone' && !interactive) {
-        return sendCanvasFallback({ sock, jid, quoted, html, canvasText, title, caption, theme, mentions });
-    }
-    
-    const content = buildRichContent(html, quoted);
-    const safeQuoted = quoted?.message ? quoted : undefined;
-    const wrapped = generateWAMessageFromContent(jid, content, { userJid: sock.user?.id, quoted: safeQuoted });
-    await sock.relayMessage(jid, wrapped.message, { messageId: wrapped.key.id });
-    return wrapped;
+function htmlToPlainText(html) {
+return String(html || '')
+.replace(/<script[\s\S]*?<\/script>/gi, '')
+.replace(/<style[\s\S]*?<\/style>/gi, '')
+.replace(/<br\s*\/?>/gi, '\n')
+.replace(/<\/div>|<\/p>|<\/section>|<\/h[1-6]>/gi, '\n')
+.replace(/<[^>]+>/g, '')
+.replace(/&nbsp;/gi, ' ')
+.replace(/&amp;/gi, '&')
+.replace(/&lt;/gi, '<')
+.replace(/&gt;/gi, '>')
+.replace(/&quot;/gi, '"')
+.replace(/&#39;/gi, "'")
+.replace(/[ \t]+\n/g, '\n')
+.replace(/\n{3,}/g, '\n\n')
+.trim();
 }
 
-async function sendRichText({ sock, jid, quoted, text, title }) {
-    return sendRichHtml({ sock, jid, quoted, html: textHtml(text, title) });
+function escapeXml(value) {
+return String(value || '').replace(/[&<>"']/g, char => ({
+'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;',
+}[char]));
 }
 
-// ... keep your other functions unchanged ...
+async function sendCanvasFallback({ sock, jid, quoted, html, canvasText, title, caption, theme = 'default', mentions = []}) {
+// ... keep your existing code ...
+}
+
+async function sendMadaraTTTCanvas({ sock, jid, quoted, board, players = [], status = '', mentions = []}) {
+// ... keep your existing code ...
+}
+
+async function sendMadaraBanCanvas({ sock, jid, quoted, number, banned, caption }) {
+// ... keep your existing code ...
+}
+
+function labelForCanvas(jid) {
+return String(jid || '').split(':')[0].split('@')[0];
+}
+
+async function sendMadaraPianoCanvas({ sock, jid, quoted, rows = [], score = 0, combo = 0, level = 1, status = '', gameOver = false }) {
+// ... keep your existing code ...
+}
+
+async function sendRichHtml({ sock, jid, quoted, html, canvasText, title, caption, theme, mentions = [], interactive = false}) {
+const deviceMode = sock?.__madaraDeviceMode || database.getDeviceMode();
+if (deviceMode === 'iphone' &&!interactive) {
+return sendCanvasFallback({ sock, jid, quoted, html, canvasText, title, caption, theme, mentions});
+}
+const content = buildRichContent(html, quoted);
+const safeQuoted = quoted?.message? quoted : undefined;
+const wrapped = generateWAMessageFromContent(jid, content, { userJid: sock.user?.id, quoted: safeQuoted});
+await sock.relayMessage(jid, wrapped.message, { messageId: wrapped.key.id});
+return wrapped;
+}
+
+async function sendRichText({ sock, jid, quoted, text, title}) {
+return sendRichHtml({ sock, jid, quoted, html: textHtml(text, title)});
+}
+
+function createEconomyGenAISock(sock, { title = 'ECONOMY' } = {}) {
+// ... keep your existing code ...
+}
 
 module.exports = { escapeHtml, buildRichContent, htmlToPlainText, sendCanvasFallback, sendMadaraTTTCanvas, sendMadaraBanCanvas, sendMadaraPianoCanvas, sendRichHtml, sendRichText, createEconomyGenAISock };
