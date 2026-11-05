@@ -27,7 +27,7 @@
 'use strict';
 
 // Small gap between each group post so we don't hammer WhatsApp / trip anti-spam.
-const DELAY_BETWEEN_GROUPS_MS = 1200;
+const DELAY_BETWEEN_GROUPS_MS = 2000;
 
 // Lazily require the shared group-status helpers INSIDE execute() rather than at the
 // top of the file. If this require ever fails (wrong path, missing baileys
@@ -116,11 +116,33 @@ module.exports = {
         }
 
         // ── Resolve every group the bot is currently in ────────────────────
-        let groupsMap;
-        try {
-            groupsMap = await sock.groupFetchAllParticipating();
-        } catch (err) {
-            return reply(`❌ _Failed to fetch bot's groups: ${err.message}_`);
+        // groupFetchAllParticipating is rate-limited by WhatsApp.
+        // Retry with backoff instead of dying on the first rate-overlimit.
+        let groupsMap = null;
+        {
+            const maxAttempts = 4;
+            let lastErr = null;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                try {
+                    groupsMap = await sock.groupFetchAllParticipating();
+                    lastErr = null;
+                    break;
+                } catch (err) {
+                    lastErr = err;
+                    const msg = String(err?.message || err || '');
+                    const isRate = /rate-overlimit|rate.?limit|too many|429/i.test(msg);
+                    console.error(`[global status] groupFetchAllParticipating attempt ${attempt}/${maxAttempts}:`, msg);
+                    if (!isRate || attempt === maxAttempts) break;
+                    await new Promise(r => setTimeout(r, 2000 * Math.pow(2, attempt - 1)));
+                }
+            }
+            if (lastErr) {
+                const msg = String(lastErr?.message || lastErr || 'unknown error');
+                const hint = /rate-overlimit|rate.?limit/i.test(msg)
+                    ? '\n\n_WhatsApp rate-limited the group list fetch. Wait ~30–60s and try again._'
+                    : '';
+                return reply(`❌ _Failed to fetch bot's groups: ${msg}_${hint}`);
+            }
         }
         const groupIds = Object.keys(groupsMap || {});
         if (!groupIds.length) {
@@ -138,6 +160,9 @@ module.exports = {
                 } catch (err) {
                     failed++;
                     console.error(`[global status] failed for ${gid}:`, err.message);
+                    if (/rate-overlimit|rate.?limit|429/i.test(String(err.message || ''))) {
+                        await new Promise((r) => setTimeout(r, 4000));
+                    }
                 }
                 await new Promise((r) => setTimeout(r, DELAY_BETWEEN_GROUPS_MS));
             }
