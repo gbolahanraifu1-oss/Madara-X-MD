@@ -90,7 +90,7 @@ module.exports = {
                 : '';
 
             const pairText = `❤️ *_ᴘᴀɪʀɪɴɢ ᴄᴏᴅᴇ ғᴏʀ @${ctx.sender.split('@')[0]}_* ❤️
-╭═══〘 𝑴𝑨𝑫𝑨𝑹𝑨 𝑿-𝑴𝑫 〙═══⊷❍
+╭═══〘 𝑴𝑨𝑫𝑨𝑹𝑨 𝑿-𝑴𝑫 〙═⊷❍
 ┃✰│CODE: *${codeOnlyMsg}*
 ┃✰│EXPIRES: 60s
 ╰──────────────────
