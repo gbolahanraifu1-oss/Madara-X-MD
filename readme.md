@@ -15,7 +15,7 @@
 ![Status](https://img.shields.io/badge/vibes-immaculate-ff69b4?style=for-the-badge)
 
 [![Telegram](https://img.shields.io/badge/Telegram-Channel-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/madarainc)
-[![WhatsApp Channel](https://img.shields.io/badge/WhatsApp-Channel-25D366?style=for-the-badge&logo=whatsapp&logoColor=white)](https://whatsapp.com/channel/YOUR_CHANNEL_ID)
+[![WhatsApp Channel](https://img.shields.io/badge/WhatsApp-Channel-25D366?style=for-the-badge&logo=whatsapp&logoColor=white)](https://whatsapp.com/channel/0029Vb88OB4545unOuID4H0Q)
 [![Web](https://img.shields.io/badge/Pair-Web%20Portal-FF2E2E?style=for-the-badge&logo=googlechrome&logoColor=white)](https://madaraweb.dpdns.org)
 
 <img src="https://komarev.com/ghpvc/?username=YOUR_USERNAME&label=Views&color=red&style=for-the-badge" alt="views"/>
