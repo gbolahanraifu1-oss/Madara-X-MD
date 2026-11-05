@@ -17,7 +17,6 @@
 'use strict';
 
 const { downloadMediaMessage } = require('@itsliaaa/baileys');
-const { menuBox } = require('../../lib/menuBox');
 // NOTE: this used to have its own local postGroupStatus() that just threw
 // raw {text, backgroundColor} at generateWAMessageContent — no link
 // preview handling at all, so a URL in the text posted as a plain blue
@@ -54,26 +53,46 @@ module.exports = {
 
         if (!text && !hasMedia) {
             return ctx.reply(
-                menuBox('❌', 'ᴀʟʟ sᴛᴀᴛᴜs ᴜsᴀɢᴇ', [
-                    `\`${s.prefix}allstatus Your text or link\` — text/link status`,
-                    `Reply to an image/video with \`${s.prefix}allstatus [caption]\` — media status`,
-                    ``,
-                    `_Posts a native Group Status (same as .gstatus) to every group_`,
-                    `_this session is in — works from DM or any group._`,
-                    `_Short form \`${s.prefix}gcstatus\` works the same way._`,
-                ]) + s.FOOTER
+                `❌ *All Status — Usage*\n\n` +
+                `\`${s.prefix}allstatus Your text or link\` — text/link status\n` +
+                `Reply to an image/video with \`${s.prefix}allstatus [caption]\` — media status\n\n` +
+                `_Posts a native Group Status (same as .gstatus) to every group this session is in — works from DM or any group._\n` +
+                `_Short form \`${s.prefix}gcstatus\` works the same way._`
             );
         }
 
+        // groupFetchAllParticipating is rate-limited by WhatsApp.
+        // Retry with backoff instead of dying on the first rate-overlimit.
         let groupIds = [];
-        try {
-            const chats = await sock.groupFetchAllParticipating();
-            groupIds = Object.keys(chats);
-        } catch (e) {
-            return ctx.reply(`❌ Could not fetch your groups: ${e.message}${s.FOOTER}`);
+        {
+            const maxAttempts = 4;
+            let lastErr = null;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                try {
+                    const chats = await sock.groupFetchAllParticipating();
+                    groupIds = Object.keys(chats || {});
+                    lastErr = null;
+                    break;
+                } catch (e) {
+                    lastErr = e;
+                    const msg = String(e?.message || e || '');
+                    const isRate = /rate-overlimit|rate.?limit|too many|429/i.test(msg);
+                    console.error(`[allstatus] groupFetchAllParticipating attempt \( {attempt}/ \){maxAttempts}:`, msg);
+                    if (!isRate || attempt === maxAttempts) break;
+                    // Exponential backoff: 2s, 4s, 8s
+                    await new Promise(r => setTimeout(r, 2000 * Math.pow(2, attempt - 1)));
+                }
+            }
+            if (lastErr) {
+                const msg = String(lastErr?.message || lastErr || 'unknown error');
+                const hint = /rate-overlimit|rate.?limit/i.test(msg)
+                    ? '\n\n_WhatsApp rate-limited the group list fetch. Wait \~30–60s and try again._'
+                    : '';
+                return ctx.reply(`❌ Could not fetch your groups: \( {msg} \){hint}`);
+            }
         }
         if (!groupIds.length)
-            return ctx.reply(`⚠️ You're not in any groups on this session.${s.FOOTER}`);
+            return ctx.reply(`⚠️ You're not in any groups on this session.`);
 
         // ── Pre-download media once (shared across all groups) ─────────────
         let mediaBuffer = null, mediaType = null;
@@ -85,7 +104,7 @@ module.exports = {
                 mediaType   = imgMsg ? 'image' : 'video';
             } catch (e) {
                 console.error('[allstatus] Media download failed:', e.message);
-                return ctx.reply(`❌ Could not download the media to post: ${e.message}${s.FOOTER}`);
+                return ctx.reply(`❌ Could not download the media to post: ${e.message}`);
             }
         }
 
@@ -127,18 +146,25 @@ module.exports = {
             } catch (e) {
                 console.error(`[allstatus] failed for group ${gid}:`, e.message);
                 failed++;
+                if (/rate-overlimit|rate.?limit|429/i.test(String(e.message || ''))) {
+                    // Back off harder before hitting the next group
+                    await delay(4000);
+                }
             }
-            await delay(1000); // native group-status relay — a bit more conservative than a plain chat message
+            // Slightly longer gap + extra pause after failures (esp. rate-overlimit)
+            const extra = failed > sent ? 2500 : 0;
+            await delay(1800 + extra);
         }
 
         await ctx.react('✅');
+        const preview = (text || '[media]').slice(0, 80);
+        const ellipsis = text?.length > 80 ? '…' : '';
         return ctx.reply(
-            menuBox('📢', 'ᴀʟʟ sᴛᴀᴛᴜs ᴄᴏᴍᴘʟᴇᴛᴇ', [
-                `*Groups targeted:* ${groupIds.length}`,
-                `*Posted:* ${sent}`,
-                ...(failed > 0 ? [`*Failed:* ${failed}`] : []),
-                `*Content:* _${(text || '[media]').slice(0, 80)}${text?.length > 80 ? '…' : ''}_`,
-            ]) + s.FOOTER
+            `📢 *All Status Complete*\n\n` +
+            `*Groups targeted:* ${groupIds.length}\n` +
+            `*Posted:* ${sent}\n` +
+            (failed > 0 ? `*Failed:* ${failed}\n` : '') +
+            `*Content:* _\( {preview} \){ellipsis}_`
         );
     },
 };
