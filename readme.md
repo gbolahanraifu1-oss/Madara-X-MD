@@ -157,7 +157,7 @@ Every incoming message goes through context building (who sent it, are they admi
 ## ⚡ Quick start (60 seconds)
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git
+git clone https://github.com/gbolahanraifu1-oss/Madara-X-MD/tree/legacy-before-v1.2.git
 cd YOUR_REPO
 npm install
 cp .env.example .env      # then edit it
