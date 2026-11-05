@@ -14,7 +14,7 @@
 ![Multi Session](https://img.shields.io/badge/multi--session-yes-00C2A8?style=for-the-badge)
 ![Status](https://img.shields.io/badge/vibes-immaculate-ff69b4?style=for-the-badge)
 
-[![Telegram](https://img.shields.io/badge/Telegram-Channel-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/madaraxinc)
+[![Telegram](https://img.shields.io/badge/Telegram-Channel-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/madarainc)
 [![WhatsApp Channel](https://img.shields.io/badge/WhatsApp-Channel-25D366?style=for-the-badge&logo=whatsapp&logoColor=white)](https://whatsapp.com/channel/YOUR_CHANNEL_ID)
 [![Web](https://img.shields.io/badge/Pair-Web%20Portal-FF2E2E?style=for-the-badge&logo=googlechrome&logoColor=white)](https://madaraweb.dpdns.org)
 
@@ -658,8 +658,8 @@ This project is **unofficial** and **not affiliated with, endorsed by, or connec
 
 ### Built with 🔥 by **MADARA X-MD | INC.**
 
-[![Telegram](https://img.shields.io/badge/Join-Telegram-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/madaraxinc)
-[![Star](https://img.shields.io/badge/Drop%20a-⭐-FFD700?style=for-the-badge)](https://github.com/YOUR_USERNAME/YOUR_REPO)
+[![Telegram](https://img.shields.io/badge/Join-Telegram-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/madarainc)
+[![Star](https://img.shields.io/badge/Drop%20a-⭐-FFD700?style=for-the-badge)](https://github.com/gbolahanraifu1-oss/Madara-X-MD/tree/legacy-before-v1.2)
 
 _If this bot saved you time, a star is free and it makes us feel things._ 💅
 
