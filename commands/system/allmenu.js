@@ -2,7 +2,7 @@
 
 const crypto = require('crypto');
 const { generateWAMessageFromContent} = require('@itsliaaa/baileys');
-const font = require('../utils/fontSystem.js'); // FIXED: correct path
+const font = require('../utils/fontSystem'); // FIXED: correct path
 
 module.exports = {
 name: 'allmenu',
