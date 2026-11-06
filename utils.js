@@ -20,7 +20,7 @@ quotedMessage,
 isForwarded: true,
 forwardingScore: 999,
 forwardedNewsletterMessageInfo: {
-newsletterJid: '120363419703941028@newsletter',
+newsletterJid: '120363424626346173@newsletter',
 newsletterName: 'MADARA X-MD'
 },
 forwardOrigin: 'USER'
