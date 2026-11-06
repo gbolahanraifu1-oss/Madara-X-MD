@@ -23,7 +23,7 @@ const sortedCats = [...categories.keys()].sort((a, b) => a.localeCompare(b));
 const blocks = [];
 
 for (const cat of sortedCats) {
-
+const plugins = categories.get(cat)
 .filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i)
 .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -41,7 +41,7 @@ try {
 await sock.sendMessage(ctx.from, {
 text,
 contextInfo: quotedContext
-}, { quoted: msg });
+}, { quoted: msg});
 } catch (e) {
 await ctx.reply(text);
 }
