@@ -1,118 +1,97 @@
 'use strict';
 
-import { generateWAMessageFromContent, isJidGroup } from '@itsliaaa/baileys'
-import { prepareRichResponseMessage } from '@itsliaaa/baileys/lib/Utils/rich-message-utils.js'
-import crypto from 'crypto'
+const crypto = require('crypto');
+const { generateWAMessageFromContent} = require('@itsliaaa/baileys');
+const font = require('../utils/fontSystem.js'); // FIXED: correct path
 
-const font = require('../utils/fontSystem.js');
+module.exports = {
+name: 'allmenu',
+aliases: ['allcmds', 'allcommands', 'cmdlist'],
+category: 'system',
+desc: 'List every command in the bot, grouped by category',
+usage: '†allmenu',
 
+async execute(sock, msg, args, ctx) {
+const s = ctx.settings;
+const { getCategories, getAllCommands} = require('../../lib/loader');
 
-export const name = 'allmenu'
-export const aliases = ['allcmds', 'allcommands', 'cmdlist']
-export const category = 'system'
-export const desc = 'List every command in the bot, grouped by category'
-export const usage = '†allmenu'
-
-const findRich = o => {
-if (!o || typeof o !== 'object') return null
-if (o.unifiedResponse?.data && o.submessages) return o
-for (const v of Object.values(o)) { const r = findRich(v); if (r) return r }
-return null
-}
-
-export async function run({ sock, from, msg, ctx }) {
-try {
-const s = ctx.settings
-const { getCategories, getAllCommands } = require('../../lib/loader')
-
-const categories = getCategories()
-const allCmds = getAllCommands()
-const totalCmds = allCmds.size
+const categories = getCategories();
+const allCmds = getAllCommands();
+const totalCmds = allCmds.size;
 
 if (!categories.size) {
-return sock.sendMessage(from, { text: `❌ No commands loaded right now.${s.FOOTER}` }, { quoted: msg })
+return ctx.reply(`❌ No commands loaded right now.${s.FOOTER}`);
 }
 
-// Build table rows: [Category, Command, Desc]
-const sortedCats = [...categories.keys()].sort((a, b) => a.localeCompare(b))
-const rows = [['Category', 'Command', 'Description']] // header
+const sortedCats = [...categories.keys()].sort((a, b) => a.localeCompare(b));
+let blocks = [];
+let header = `📦 *ALL COMMANDS* — ${totalCmds} total across ${sortedCats.length} categories\n`;
 
 for (const cat of sortedCats) {
 const plugins = categories.get(cat)
 .filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i)
-.sort((a, b) => a.name.localeCompare(b.name))
+.sort((a, b) => a.name.localeCompare(b.name));
+if (!plugins.length) continue;
 
-for (const p of plugins) {
-rows.push([
-cat.toUpperCase(),
-`${s.prefix}${p.name}`,
-p.desc || '-'
-])
-}
+const lines = plugins.map(p => `${s.prefix}${p.name}`).join(' • ');
+blocks.push(`\n*── ${cat.toUpperCase()} (${plugins.length}) ──*\n${lines}\n`);
 }
 
-const responseId = crypto.randomUUID()
-const content = prepareRichResponseMessage({
-richResponse: Array(3).fill({ text: 'x' }),
-contentText: `📦 All Commands — ${totalCmds} total across ${sortedCats.length} categories`,
-disclaimerText: font(s.FOOTER || '')
-})
+const fullText = header + blocks.join('');
 
-const rich = findRich(content)
-if (!rich) throw Error('Not found')
-
-rich.unifiedResponse.data = Buffer.from(JSON.stringify({
+const data = Buffer.from(JSON.stringify({
 __typename: 'GenAIUnifiedResponse',
-response_id: responseId,
-sections: [
-{
-__typename: 'GenAISingleLayoutViewModel',
+response_id: crypto.randomUUID(),
+sections: [{
+__typename: 'GenAIUnifiedResponseSection',
 view_model: {
 __typename: 'GenAISingleLayoutViewModel',
 primitive: {
-__typename: 'GenATableUXPrimitive',
-title: 'All Commands',
-rows: rows.map((row, i) => ({
-is_header: i === 0,
-cells: row,
-markdown_cells: row.map(text => ({ text }))
-}))
-}
-}
-}
-]
-}))
-
-const context = content.messageContextInfo ?? {}
-content.messageContextInfo = context
-context.botMetadata = {
-...(context.botMetadata ?? {}),
-botResponseId: responseId,
-messageDisclaimerText: font(s.FOOTER || ''),
-capabilityMetadata: { capabilities: [2, 3, 8, 21, 34, 39, 55, 56, 60, 63] }
-}
-context.messageSecret ??= crypto.randomBytes(32)
-
-const wamsg = generateWAMessageFromContent(from, content, { userJid: sock.user.id, raw: true })
-const additionalNodes = [
-...(!isJidGroup(from) ? [{ tag: 'bot', attrs: { biz_bot: '1' } }] : []),
-{
-tag: 'biz',
-attrs: {
-actual_actors: '2',
-host_storage: '2',
-privacy_mode_ts: String(Math.floor(Date.now() / 1000) - 77980457)
+__typename: 'FOAHtmlPrimitiveDemoDONOTUSE',
+trusted_sources: [],
+payload: `<div style="background:#0a2e22;color:#e3dfbb;padding:14px;border-radius:16px;border:2px solid #b9954d;font-family:monospace;white-space:pre-wrap;">${fullText.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`,
 },
-content: [
-{ tag: 'interactive', attrs: { type: 'native_flow', v: '1' }, content: [{ tag: 'native_flow', attrs: { v: '9', name: 'mixed' } }] },
-{ tag: 'quality_control', attrs: { source_type: 'third_party' } }
-]
-}
-]
+},
+}],
+})).toString('base64');
 
-await sock.relayMessage(from, wamsg.message, { messageId: wamsg.key.id, additionalNodes })
-} catch (e) {
-console.error(e)
-await sock.sendMessage(ctx.from, { text: `Error loading menu.` }, { quoted: msg })
+const content = {
+messageContextInfo: {
+threadId: [],
+deviceListMetadata: {
+senderKeyIndexes: [],
+recipientKeyIndexes: [],
+recipientKeyHash: '',
+recipientTimestamp: Math.floor(Date.now() / 1000),
+},
+deviceListMetadataVersion: 2,
+messageSecret: crypto.randomBytes(32),
+},
+botForwardedMessage: {
+message: {
+richResponseMessage: {
+messageType: 1,
+submessages: [],
+unifiedResponse: { data},
+contextInfo: {
+forwardingScore: 1,
+isForwarded: true,
+forwardedAiBotMessageInfo: { botJid: '867051314767696@bot'},
+forwardOrigin: 4,
+stanzaId: msg.key.id,
+participant: msg.key.participant || msg.key.remoteJid,
+...(msg.message? { quotedMessage: msg.message}: {}),
+},
+},
+},
+},
+};
+
+const wrapped = generateWAMessageFromContent(ctx.from, content, {
+userJid: sock.user?.id,
+quoted: msg
+});
+
+await sock.relayMessage(ctx.from, wrapped.message, { messageId: wrapped.key.id});
 }
-}
+};
