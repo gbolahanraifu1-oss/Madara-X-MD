@@ -2,7 +2,6 @@
 
 const crypto = require('crypto');
 const { generateWAMessageFromContent} = require('@itsliaaa/baileys');
-const font = require('../utils/fontSystem'); // FIXED: correct path
 
 module.exports = {
 name: 'allmenu',
@@ -25,7 +24,7 @@ return ctx.reply(`❌ No commands loaded right now.${s.FOOTER}`);
 
 const sortedCats = [...categories.keys()].sort((a, b) => a.localeCompare(b));
 let blocks = [];
-let header = `📦 *ALL COMMANDS* — ${totalCmds} total across ${sortedCats.length} categories\n`;
+let header = `📦 _ALL COMMANDS_ — ${totalCmds} total across ${sortedCats.length} categories\n`;
 
 for (const cat of sortedCats) {
 const plugins = categories.get(cat)
@@ -34,7 +33,7 @@ const plugins = categories.get(cat)
 if (!plugins.length) continue;
 
 const lines = plugins.map(p => `${s.prefix}${p.name}`).join(' • ');
-blocks.push(`\n*── ${cat.toUpperCase()} (${plugins.length}) ──*\n${lines}\n`);
+blocks.push(`\n_── ${cat.toUpperCase()} (${plugins.length}) ──_\n${lines}\n`);
 }
 
 const fullText = header + blocks.join('');
