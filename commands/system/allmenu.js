@@ -1,4 +1,5 @@
 'use strict';
+import { quotedContext} from '../utils'; // adjust path if needed
 
 module.exports = {
 name: 'allmenu',
@@ -16,7 +17,8 @@ const allCmds = getAllCommands();
 const totalCmds = allCmds.size;
 
 if (!categories.size) return sock.sendMessage(ctx.from, {
-text: `❌ No commands loaded right now.${s.FOOTER}`
+text: `❌ No commands loaded right now.${s.FOOTER}`,
+contextInfo: quotedContext
 }, { quoted: msg});
 
 // Build the full data object like get format does
@@ -35,28 +37,18 @@ const plugins = categories.get(cat)
 
 data.categories[cat] = plugins.map(p => ({
 command: `${s.prefix}${p.name}`,
-description: p.desc || p.description || 'No description',
+
 category: cat
 }));
 }
 
-// Pretty print like .get does
+// Pretty print + code block, no pagination
 const code = JSON.stringify(data, null, 2);
-
-// Chunk if too long for one message
-const CHUNK_LIMIT = 3500;
-const messages = [];
-for (let i = 0; i < code.length; i += CHUNK_LIMIT) {
-messages.push(code.slice(i, i + CHUNK_LIMIT));
-}
-
-for (let i = 0; i < messages.length; i++) {
-const pageTag = messages.length > 1? `\n_page ${i + 1}/${messages.length}_`: '';
-const finalText = `📦 *ALL COMMANDS* — ${totalCmds} total across ${sortedCats.length} categories\n\n${messages[i]}${pageTag}${i === messages.length - 1? s.FOOTER: ''}`;
+const finalText = `📦 _ALL COMMANDS_ — ${totalCmds} total across ${sortedCats.length} categories\n\n\`\`\`json\n${code}\n\`\`\`${s.FOOTER}`;
 
 await sock.sendMessage(ctx.from, {
-text: finalText
+text: finalText,
+contextInfo: quotedContext
 }, { quoted: msg});
-}
 }
 };
