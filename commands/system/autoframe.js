@@ -9,9 +9,17 @@ module.exports = {
     description: 'Turn auto-framing of plain replies on or off',
     usage: '.autoframe on|off',
     ownerOnly: true,
+
     async execute(sock, msg, args, ctx) {
         const phone = ctx.sessionPhone;
         if (!phone) return ctx.reply('❌ Could not resolve this bot session.');
+
+        if (typeof database.getAutoFrame !== 'function' || typeof database.setAutoFrame !== 'function') {
+            return ctx.reply(
+                '❌ *getAutoFrame/setAutoFrame missing* from `utils/database.js`.\n' +
+                'Add the autoframe methods to **utils/database.js** (not lib/database.js) and restart.'
+            );
+        }
 
         const prefix = ctx.settings?.prefix || '.';
         const footer = ctx.settings?.FOOTER || '';
@@ -23,10 +31,11 @@ module.exports = {
             return ctx.reply(
                 `🖼️ *Auto-frame*\n` +
                 `Status: *${current ? 'ON' : 'OFF'}*\n` +
-                `Style: *${style}*  (.boxstyle menubox|stylebox)\n\n` +
-                `${prefix}autoframe on — wrap *all* plain replies in the selected box style\n` +
-                `${prefix}autoframe off — plain replies stay plain (main-branch behaviour)\n\n` +
-                `_Commands that import menuBox() always show a card, even when off._` +
+                `Style: *${style}*  (.boxstyle menubox|stylebox)\n` +
+                `Session: \`${phone}\`\n\n` +
+                `${prefix}autoframe on — wrap *all* plain replies\n` +
+                `${prefix}autoframe off — plain replies stay plain\n\n` +
+                `_Commands that call menuBox() always show a card._` +
                 footer
             );
         }
@@ -35,25 +44,35 @@ module.exports = {
         if (['on', 'enable', 'enabled', '1', 'true', 'yes'].includes(input)) enabled = true;
         else if (['off', 'disable', 'disabled', '0', 'false', 'no'].includes(input)) enabled = false;
         else {
+            return ctx.reply(`❌ Usage: ${prefix}autoframe on|off${footer}`);
+        }
+
+        database.setAutoFrame(phone, enabled);
+        const readBack = database.getAutoFrame(phone);
+        const styleNow = database.getBoxStyle(phone);
+
+        if (enabled && !readBack) {
             return ctx.reply(
-                `❌ Usage: ${prefix}autoframe on|off` +
+                `⚠️ Tried to enable auto-frame but read-back is still OFF.\n` +
+                `Session phone: \`${phone}\`\n` +
+                `Check that methods are on **utils/database.js** and data/users is writable.` +
                 footer
             );
         }
 
-        database.setAutoFrame(phone, enabled);
         if (enabled) {
             return ctx.reply(
-                `✅ Auto-frame *ON*\n` +
-                `Plain replies will use *${style}*.\n` +
-                `Change style with \`${prefix}boxstyle menubox|stylebox\`.` +
+                `✅ Auto-frame *ON* (read-back: ${readBack ? 'ON' : 'OFF'})\n` +
+                `Style: *${styleNow}*\n` +
+                `Session: \`${phone}\`\n` +
+                `Plain replies will now be wrapped.` +
                 footer
             );
         }
         return ctx.reply(
             `✅ Auto-frame *OFF*\n` +
-            `Plain replies stay plain (like main).\n` +
-            `Only commands that call menuBox() will show a frame.` +
+            `Plain replies stay plain.\n` +
+            `Only commands that call menuBox() show a frame.` +
             footer
         );
     },
