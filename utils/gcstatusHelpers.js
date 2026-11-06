@@ -42,7 +42,7 @@ const STATUS_FG_ARGB = hexToArgb(TEXT_FG_COLOR);
 
 // ── OFFICIAL CHANNEL (View Channel pill on every status post) ─────────────
 const CHANNEL_JID  = '120363424626346173@newsletter';
-const CHANNEL_NAME = 'Madara X-MD Madara tech';
+const CHANNEL_NAME = 'ᴍᴀᴅᴀʀᴀ x-ᴍᴅ | ɪɴᴄ.';
 function buildChannelCtx() {
     return {
         isForwarded: true,
