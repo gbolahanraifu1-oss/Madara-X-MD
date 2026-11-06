@@ -15,9 +15,9 @@ const { getCategories, getAllCommands} = require('../../lib/loader');
 
 const categories = getCategories();
 const allCmds = getAllCommands();
-const totalCmds = allCmds?.size ?? 0;
+const totalCmds = allCmds?.size?? 0;
 
-if (!categories?.size) return ctx.reply(`❌ No commands loaded right now.${footer}`);
+if (!categories?.size) return ctx.reply('❌ No commands loaded right now.');
 
 const sortedCats = [...categories.keys()].sort((a, b) => a.localeCompare(b));
 const blocks = [];
@@ -28,14 +28,14 @@ const plugins = categories.get(cat)
 .sort((a, b) => a.name.localeCompare(b.name));
 
 if (!plugins.length) continue;
-blocks.push(`_${cat.toUpperCase()}_ (${plugins.length})\n${plugins.map(p => `• ${prefix}${p.name}`).join('\n')}`);
+blocks.push(`_${cat.toUpperCase()}_ (${plugins.length})\n${plugins.map(p => `• ${p.name}`).join('\n')}`);
 }
 
 let body = blocks.join('\n\n');
 const MAX = 60000;
 if (body.length > MAX) body = `${body.slice(0, MAX)}\n… (truncated)`;
 
-const text = `📦 _MADARA X-MD ALL COMMANDS_\n\n_${totalCmds}_ commands · _${sortedCats.length}_ categories\n\n${body}${footer}`;
+const text = `📦 _MADARA X-MD ALL COMMANDS_\n\n_${totalCmds}_ commands · _${sortedCats.length}_ categories\n\n${body}`;
 
 try {
 await sock.sendMessage(ctx.from, {
