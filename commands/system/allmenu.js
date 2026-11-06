@@ -1,6 +1,5 @@
 'use strict';
 
-
 module.exports = {
 name: 'allmenu',
 aliases: ['allcmds', 'allcommands', 'cmdlist'],
@@ -10,16 +9,15 @@ usage: '.allmenu',
 
 async execute(sock, msg, args, ctx) {
 const s = ctx.settings;
-const { getCategories, getAllCommands } = require('../../lib/loader');
+const { getCategories, getAllCommands} = require('../../lib/loader');
 
 const categories = getCategories();
 const allCmds = getAllCommands();
 const totalCmds = allCmds.size;
 
 if (!categories.size) return sock.sendMessage(ctx.from, {
-text: `❌ No commands loaded right now.${s.FOOTER}`,
-contextInfo: quotedContext
-}, { quoted: msg });
+text: `❌ No commands loaded right now.${s.FOOTER}`
+}, { quoted: msg});
 
 // Build the full data object like get format does
 const sortedCats = [...categories.keys()].sort((a, b) => a.localeCompare(b));
@@ -53,13 +51,12 @@ messages.push(code.slice(i, i + CHUNK_LIMIT));
 }
 
 for (let i = 0; i < messages.length; i++) {
-const pageTag = messages.length > 1 ? `\n_page ${i + 1}/${messages.length}_` : '';
-const finalText = `📦 *ALL COMMANDS* — ${totalCmds} total across ${sortedCats.length} categories\n\n${messages[i]}${pageTag}${i === messages.length - 1 ? s.FOOTER : ''}`;
+const pageTag = messages.length > 1? `\n_page ${i + 1}/${messages.length}_`: '';
+const finalText = `📦 *ALL COMMANDS* — ${totalCmds} total across ${sortedCats.length} categories\n\n${messages[i]}${pageTag}${i === messages.length - 1? s.FOOTER: ''}`;
 
 await sock.sendMessage(ctx.from, {
-text: finalText,
-contextInfo: quotedContext
-}, { quoted: msg });
+text: finalText
+}, { quoted: msg});
 }
 }
 };
