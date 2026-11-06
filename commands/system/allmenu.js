@@ -1,6 +1,6 @@
 
 'use strict';
-const { quotedContext} = require('./utils'); // adjust path if needed
+const { quotedContext} = require('../../lib/utils'); // adjust path if needed
 
 module.exports = {
 name: 'allmenu',
