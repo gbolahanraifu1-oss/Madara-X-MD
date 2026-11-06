@@ -1,55 +1,71 @@
-
 'use strict';
-const { quotedContext} = require('../../lib/utils'); // adjust path if needed
+
+const { quotedContext } = require('../../lib/utils');
+const { menuBox } = require('../../lib/menuBox');
 
 module.exports = {
-name: 'allmenu',
-aliases: ['allcmds', 'allcommands', 'cmdlist'],
-category: 'system',
-desc: 'List every command in the bot, grouped by category',
-usage: '.allmenu',
+    name: 'allmenu',
+    aliases: ['allcmds', 'allcommands', 'cmdlist'],
+    category: 'system',
+    desc: 'List every command in the bot, grouped by category',
+    usage: '.allmenu',
 
-async execute(sock, msg, args, ctx) {
-const s = ctx.settings;
-const { getCategories, getAllCommands} = require('../../lib/loader');
+    async execute(sock, msg, args, ctx) {
+        const s = ctx.settings || {};
+        const prefix = s.prefix || '.';
+        const footer = s.FOOTER || '';
+        const { getCategories, getAllCommands } = require('../../lib/loader');
 
-const categories = getCategories();
-const allCmds = getAllCommands();
-const totalCmds = allCmds.size;
+        const categories = getCategories();
+        const allCmds = getAllCommands();
+        const totalCmds = allCmds?.size ?? 0;
 
-if (!categories.size) return sock.sendMessage(ctx.from, {
-text: `❌ No commands loaded right now.${s.FOOTER}`,
-contextInfo: quotedContext
-}, { quoted: msg});
+        if (!categories?.size) {
+            return ctx.reply(`❌ No commands loaded right now.${footer}`);
+        }
 
-// Build the full data object
-const sortedCats = [...categories.keys()].sort((a, b) => a.localeCompare(b));
-const data = {
-total_commands: totalCmds,
-total_categories: sortedCats.length,
-generated_at: new Date().toISOString(),
-categories: {}
-};
+        const sortedCats = [...categories.keys()].sort((a, b) => a.localeCompare(b));
+        const data = {
+            total_commands: totalCmds,
+            total_categories: sortedCats.length,
+            generated_at: new Date().toISOString(),
+            categories: {},
+        };
 
-for (const cat of sortedCats) {
-const plugins = categories.get(cat)
-.filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i) // dedupe
-.sort((a, b) => a.name.localeCompare(b.name));
+        for (const cat of sortedCats) {
+            const plugins = (categories.get(cat) || [])
+                .filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i)
+                .sort((a, b) => a.name.localeCompare(b.name));
 
-data.categories[cat] = plugins.map(p => ({
-command: `${s.prefix}${p.name}`,
+            data.categories[cat] = plugins.map(p => ({
+                command: `${prefix}${p.name}`,
+                category: cat,
+            }));
+        }
 
-category: cat
-}));
-}
+        const code = JSON.stringify(data, null, 2);
+        // WhatsApp hard-limits message size — keep payload sane
+        const body = code.length > 5500
+            ? `${code.slice(0, 5500)}\n… (truncated)`
+            : code;
 
-// Pretty print JSON in code block
-const code = JSON.stringify(data, null, 2);
-const finalText = `📦 _MADARA X-MD ALL COMMANDS_ — ${totalCmds} total across ${sortedCats.length} categories\n\n\`\`\`json\n${code}\n\`\`\`${s.FOOTER}`;
+        const text =
+            menuBox('📦', 'ᴀʟʟ ᴄᴏᴍᴍᴀɴᴅs', [
+                `*${totalCmds}* commands · *${sortedCats.length}* categories`,
+                ``,
+                '```json',
+                body,
+                '```',
+            ]) + footer;
 
-await sock.sendMessage(ctx.from, {
-text: finalText,
-contextInfo: quotedContext
-}, { quoted: msg});
-}
+        try {
+            await sock.sendMessage(ctx.from, {
+                text,
+                contextInfo: quotedContext,
+            }, { quoted: msg });
+        } catch (e) {
+            // Fallback without fake-forward context if WA rejects it
+            await ctx.reply(text);
+        }
+    },
 };
