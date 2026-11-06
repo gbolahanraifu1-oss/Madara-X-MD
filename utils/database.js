@@ -639,20 +639,40 @@ class Database {
         this.save('users');
     }
 
-    // ── Outgoing reply box style (per bot session; defaults to MenuBox) ──
+
+    // ── Outgoing reply box style (menuBox | styleBox only) ──────────────
+    // Used when auto-frame is ON, or by commands that build a framed card.
     getBoxStyle(phoneNumber) {
-        return this.data.users[phoneNumber]?.boxStyle === 'styleBox' ? 'styleBox' : 'menuBox';
+        const raw = this.data.users[phoneNumber]?.boxStyle;
+        return raw === 'styleBox' ? 'styleBox' : 'menuBox';
     }
 
     setBoxStyle(phoneNumber, boxStyle) {
         if (!phoneNumber) return false;
         const value = String(boxStyle || '').trim().toLowerCase();
-        const selected = value === 'stylebox' ? 'styleBox' : value === 'menubox' ? 'menuBox' : null;
+        let selected = null;
+        if (value === 'stylebox' || value === 'style' || value === 'style-box') selected = 'styleBox';
+        else if (value === 'menubox' || value === 'menu' || value === 'menu-box' || value === 'default') selected = 'menuBox';
         if (!selected) return false;
         if (!this.data.users[phoneNumber]) this.data.users[phoneNumber] = {};
         this.data.users[phoneNumber].boxStyle = selected;
         this.save('users');
         return selected;
+    }
+
+    // ── Auto-frame plain replies (default OFF = main-branch behaviour) ──
+    // ON  → every plain ctx.reply is wrapped in getBoxStyle()
+    // OFF → only commands that call menuBox() get a frame
+    getAutoFrame(phoneNumber) {
+        return this.data.users[phoneNumber]?.autoFrame === true;
+    }
+
+    setAutoFrame(phoneNumber, enabled) {
+        if (!phoneNumber) return false;
+        if (!this.data.users[phoneNumber]) this.data.users[phoneNumber] = {};
+        this.data.users[phoneNumber].autoFrame = Boolean(enabled);
+        this.save('users');
+        return this.data.users[phoneNumber].autoFrame;
     }
 
     // ── Aza / Bank Details (used by .aza) ────────────────────────────────
