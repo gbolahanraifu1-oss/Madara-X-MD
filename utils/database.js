@@ -640,39 +640,62 @@ class Database {
     }
 
 
+    // ── Normalize session phone keys (digits only) ─────────────────────
+    _phoneKey(phoneNumber) {
+        if (phoneNumber == null || phoneNumber === '') return '';
+        const digits = String(phoneNumber).replace(/[^0-9]/g, '');
+        return digits || String(phoneNumber).trim();
+    }
+
+    _ensureUser(phoneNumber) {
+        const key = this._phoneKey(phoneNumber);
+        if (!key) return null;
+        if (!this.data.users) this.data.users = {};
+        if (!this.data.users[key]) this.data.users[key] = {};
+        // Also keep legacy non-normalized key in sync if different
+        const raw = String(phoneNumber).trim();
+        if (raw && raw !== key) {
+            if (!this.data.users[raw]) this.data.users[raw] = this.data.users[key];
+        }
+        return key;
+    }
+
     // ── Outgoing reply box style (menuBox | styleBox only) ──────────────
-    // Used when auto-frame is ON, or by commands that build a framed card.
     getBoxStyle(phoneNumber) {
-        const raw = this.data.users[phoneNumber]?.boxStyle;
+        const key = this._phoneKey(phoneNumber);
+        const raw = (key && this.data.users[key]?.boxStyle)
+            || this.data.users[String(phoneNumber || '').trim()]?.boxStyle;
         return raw === 'styleBox' ? 'styleBox' : 'menuBox';
     }
 
     setBoxStyle(phoneNumber, boxStyle) {
-        if (!phoneNumber) return false;
+        const key = this._ensureUser(phoneNumber);
+        if (!key) return false;
         const value = String(boxStyle || '').trim().toLowerCase();
         let selected = null;
         if (value === 'stylebox' || value === 'style' || value === 'style-box') selected = 'styleBox';
         else if (value === 'menubox' || value === 'menu' || value === 'menu-box' || value === 'default') selected = 'menuBox';
         if (!selected) return false;
-        if (!this.data.users[phoneNumber]) this.data.users[phoneNumber] = {};
-        this.data.users[phoneNumber].boxStyle = selected;
+        this.data.users[key].boxStyle = selected;
         this.save('users');
         return selected;
     }
 
     // ── Auto-frame plain replies (default OFF = main-branch behaviour) ──
-    // ON  → every plain ctx.reply is wrapped in getBoxStyle()
-    // OFF → only commands that call menuBox() get a frame
     getAutoFrame(phoneNumber) {
-        return this.data.users[phoneNumber]?.autoFrame === true;
+        const key = this._phoneKey(phoneNumber);
+        if (key && this.data.users[key]?.autoFrame === true) return true;
+        const legacy = String(phoneNumber || '').trim();
+        if (legacy && this.data.users[legacy]?.autoFrame === true) return true;
+        return false;
     }
 
     setAutoFrame(phoneNumber, enabled) {
-        if (!phoneNumber) return false;
-        if (!this.data.users[phoneNumber]) this.data.users[phoneNumber] = {};
-        this.data.users[phoneNumber].autoFrame = Boolean(enabled);
+        const key = this._ensureUser(phoneNumber);
+        if (!key) return false;
+        this.data.users[key].autoFrame = Boolean(enabled);
         this.save('users');
-        return this.data.users[phoneNumber].autoFrame;
+        return this.data.users[key].autoFrame;
     }
 
     // ── Aza / Bank Details (used by .aza) ────────────────────────────────
