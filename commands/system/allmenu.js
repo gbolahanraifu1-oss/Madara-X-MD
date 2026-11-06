@@ -4,8 +4,7 @@ import { generateWAMessageFromContent, isJidGroup } from '@itsliaaa/baileys'
 import { prepareRichResponseMessage } from '@itsliaaa/baileys/lib/Utils/rich-message-utils.js'
 import crypto from 'crypto'
 
-import font from '@/functions/font.js'
-disclaimerText: 'x'
+const font = require('../utils/fontSystem.js');
 
 
 export const name = 'allmenu'
