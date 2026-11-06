@@ -1,5 +1,6 @@
+
 'use strict';
-import { quotedContext} from '../utils'; // adjust path if needed
+const { quotedContext} = require('../utils'); // adjust path if needed
 
 module.exports = {
 name: 'allmenu',
@@ -21,7 +22,7 @@ text: `❌ No commands loaded right now.${s.FOOTER}`,
 contextInfo: quotedContext
 }, { quoted: msg});
 
-// Build the full data object like get format does
+// Build the full data object
 const sortedCats = [...categories.keys()].sort((a, b) => a.localeCompare(b));
 const data = {
 total_commands: totalCmds,
@@ -42,9 +43,9 @@ category: cat
 }));
 }
 
-// Pretty print + code block, no pagination
+// Pretty print JSON in code block
 const code = JSON.stringify(data, null, 2);
-const finalText = `📦 _ALL COMMANDS_ — ${totalCmds} total across ${sortedCats.length} categories\n\n\`\`\`json\n${code}\n\`\`\`${s.FOOTER}`;
+const finalText = `📦 _MADARA X-MD ALL COMMANDS_ — ${totalCmds} total across ${sortedCats.length} categories\n\n\`\`\`json\n${code}\n\`\`\`${s.FOOTER}`;
 
 await sock.sendMessage(ctx.from, {
 text: finalText,
