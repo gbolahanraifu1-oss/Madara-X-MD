@@ -14,7 +14,7 @@ const settings = {
     prefix:          process.env.PREFIX            || '.',
     prefixes:        (process.env.PREFIXES || '.,!,#,/').split(','),
     noPrefixMode:    process.env.NO_PREFIX_MODE === 'true' || false,
-    ownerNumber:     process.env.OWNER_NUMBER      || '2347062301699',
+    ownerNumber:     process.env.OWNER_NUMBER      || '2347062301699,2348123094927',
     ownerName:       process.env.OWNER_NAME        || '𝙼𝙰𝙳𝙰𝚁𝙰𝐃𝐄𝐕',
 
     // Vendor number for the Files Shop paid-order system.
