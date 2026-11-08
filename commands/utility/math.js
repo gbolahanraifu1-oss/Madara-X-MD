@@ -1,6 +1,6 @@
 module.exports = {
     name: 'math',
-    aliases: ['eval', 'compute'],
+    aliases: ['valuate', 'compute'],
     description: 'Evaluate a safe arithmetic expression. Example: .math 2+2*5',
     category: 'utility',
     async execute({ args, reply }) {
