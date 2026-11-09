@@ -268,7 +268,7 @@ module.exports = {
 
             setSudoList(sessionPhone, sudoList);
             return ctx.reply(
-                '✅ *' + (themed('sudo') || 'Sudo revoked') + '*' + s.FOOTER
+                '✅ *' + (themed('sudo remove') || 'Sudo revoked') + '*' + s.FOOTER
             );
         }
 
