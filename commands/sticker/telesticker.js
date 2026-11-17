@@ -15,6 +15,10 @@ function extractPackName(input) {
     const m = String(input).match(/(?:t\.me\/addstickers\/|tg:\/\/addstickers\?set=)([A-Za-z0-9_]+)/i);
     return m ? m[1] : String(input).trim();
 }
+// FIX: slice by codepoint, not UTF-16 units - stops breaking 𝗡𝗮𝗴𝗮𝘁𝗼 etc
+function safeSlice(str, n) {
+    return Array.from(String(str || '')).slice(0, n).join('');
+}
 function uuid() {
     if (crypto.randomUUID) return crypto.randomUUID();
     return crypto.randomBytes(16).toString('hex').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
@@ -29,75 +33,58 @@ async function getBaileys() {
     try { return require('baileys'); } catch {}
     return null;
 }
-function longToNumber(v, fallback) {
-    if (!v) return fallback;
-    if (typeof v === 'number') return v;
-    if (typeof v === 'string') return parseInt(v, 10) || fallback;
-    if (typeof v === 'object' && 'low' in v) return v.low || fallback;
-    if (Buffer.isBuffer(v)) return fallback;
-    return fallback;
-}
 
 async function sendOnePack(sock, msg, ctx, packName, publisher, items) {
     const packId = uuid().replace(/-/g, '').slice(0, 32);
     const baileys = await getBaileys();
     const { prepareWAMessageMedia, generateWAMessageFromContent } = baileys;
 
-    // tray must be PNG 96x96
-    let trayBuf = items[0].buf;
+    const cleanName = safeSlice(packName, 28);
+    const cleanPublisher = safeSlice(publisher, 28);
+
+    // tray must be PNG 96x96 - if sharp fails, DON'T send webp as .png
+    let trayBuf = null;
     try {
         const sharp = require('sharp');
         trayBuf = await sharp(items[0].buf).resize(96, 96, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
     } catch {}
-    if (!trayBuf || trayBuf.length < 500) trayBuf = items[0].buf; // fallback if sharp broken
+    if (!trayBuf) throw new Error('tray PNG conversion failed - sharp required');
 
-    const stickersMeta = [];
-    for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        const media = await prepareWAMessageMedia({ sticker: item.buf }, { upload: sock.waUploadToServer });
-        const sm = media.stickerMessage;
-        if (!sm?.directPath) throw new Error('sticker upload fail ' + i);
-
-        stickersMeta.push({
-            fileName: `${packId}_${i}.webp`,
-            isAnimated: !!item.isAnimated,
-            emojis: (item.emojis || ['⭐']).slice(0, 2),
-            accessibilityLabel: packName.slice(0, 30),
-            isLottie: false,
-            mimetype: 'image/webp',
-            directPath: sm.directPath,
-            fileSha256: sm.fileSha256,
-            fileEncSha256: sm.fileEncSha256,
-            mediaKey: sm.mediaKey,
-            fileLength: longToNumber(sm.fileLength, item.buf.length), // FIX 0.1kb
-            mediaKeyTimestamp: sm.mediaKeyTimestamp,
-        });
-    }
+    // FIX: no per-sticker upload. Proto strips directPath/mediaKey anyway.
+    // Sticker files are fetched by client via packId + fileName.
+    const stickersMeta = items.map((item, i) => ({
+        fileName: `${packId}_${i}.webp`,
+        isAnimated: !!item.isAnimated,
+        emojis: (item.emojis || ['⭐']).slice(0, 2),
+        // FIX: per-sticker label, codepoint-safe
+        accessibilityLabel: safeSlice(`${cleanName} (${i + 1})`, 32),
+        isLottie: false,
+        mimetype: 'image/webp',
+    }));
 
     const trayMedia = await prepareWAMessageMedia({ image: trayBuf }, { upload: sock.waUploadToServer });
     const im = trayMedia.imageMessage;
     if (!im?.directPath) throw new Error('tray upload fail');
 
-    const realTrayLen = trayBuf.length;
-    const realSha256 = crypto.createHash('sha256').update(trayBuf).digest();
-
     const stickerPackMessage = {
         stickerPackId: packId,
-        name: packName.slice(0, 28),
-        publisher: publisher.slice(0, 28),
-        publisherPublic: publisher.slice(0, 28),
+        name: cleanName,
+        publisher: cleanPublisher,
+        publisherPublic: cleanPublisher,
         stickers: stickersMeta,
         trayIconFileName: `${packId}.png`,
         stickerPackOrigin: 'USER_CREATED',
-        stickerPackSize: String(items.length),
-        fileLength: realTrayLen, // FIX: was im.fileLength (Long = 0.1kb)
-        fileSha256: im.fileSha256 || realSha256,
+        // FIX: number, not String("60")
+        stickerPackSize: items.length,
+        fileLength: trayBuf.length,
+        fileSha256: im.fileSha256,
         fileEncSha256: im.fileEncSha256,
         mediaKey: im.mediaKey,
         directPath: im.directPath,
         mediaKeyTimestamp: im.mediaKeyTimestamp,
+        // thumbnail IS the tray icon, so same hash is correct - keep it
         thumbnailDirectPath: im.directPath,
-        thumbnailSha256: im.fileSha256 || realSha256,
+        thumbnailSha256: im.fileSha256,
         thumbnailEncSha256: im.fileEncSha256,
         thumbnailHeight: 96,
         thumbnailWidth: 96,
@@ -129,8 +116,8 @@ module.exports = {
             const set = res?.data?.result;
             if (!set || !set.stickers?.length) { jobs.delete(ctx.sender); return ctx.reply('Could not find that Telegram sticker pack.' + s.FOOTER); }
 
-            const baseTitle = String(set.title || packInput).slice(0, 28);
-            const publisher = String(s.ownerName || s.botBrand || 'MADARA X-MD').slice(0, 28);
+            const baseTitle = safeSlice(set.title || packInput, 28);
+            const publisher = safeSlice(s.ownerName || s.botBrand || 'MADARA X-MD', 28);
             await ctx.reply(`📦 *${baseTitle}* — ${set.stickers.length} sticker(s)\nPack size: ${PACK_MAX} each (auto-split if more)…` + s.FOOTER);
 
             const all = []; let skipped = 0;
@@ -147,7 +134,8 @@ module.exports = {
                     const stk = new Sticker(fileUrl, { pack: baseTitle, author: publisher, type });
                     const buf = await stk.toBuffer();
                     if (!buf || buf.length < 100) { skipped++; continue; }
-                    all.push({ buf, emojis: Array.isArray(st.emoji) ? st.emoji : (st.emoji ? [st.emoji] : ['⭐']), isAnimated: !!st.is_video });
+                    // FIX: Telegram st.emoji is a string, not array
+                    all.push({ buf, emojis: st.emoji ? [st.emoji] : ['⭐'], isAnimated: !!st.is_video });
                 } catch (e) { console.error('[telesticker]', e.message); skipped++; }
             }
 
@@ -158,7 +146,7 @@ module.exports = {
             const results = [];
             for (let b = 0; b < batches.length; b++) {
                 if (!jobs.get(ctx.sender)) break;
-                const label = batches.length === 1 ? baseTitle : `${baseTitle} (${b + 1}/${batches.length})`;
+                const label = batches.length === 1 ? baseTitle : safeSlice(`${baseTitle} (${b + 1}/${batches.length})`, 28);
                 const r = await sendOnePack(sock, msg, ctx, label, publisher, batches[b]);
                 results.push({ label, ...r });
                 await new Promise(r => setTimeout(r, 1200));
