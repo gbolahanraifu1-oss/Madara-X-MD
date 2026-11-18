@@ -37,10 +37,33 @@ function parseReactionCount(value) {
 
 function getQuotedStickerMessage(quoted) {
     if (!quoted) return null;
-    const message = quoted.message || quoted;
-    return message.stickerMessage || message.lottieStickerMessage ||
-        quoted.stickerMessage || quoted.lottieStickerMessage ||
-        (quoted.mtype === 'stickerMessage' || quoted.mtype === 'lottieStickerMessage' ? quoted : null);
+
+    // Different bots structure quoted differently
+    const msg = quoted.message || quoted.msg || quoted;
+    const mtype = (quoted.mtype || msg.mtype || '').toLowerCase();
+
+    // Direct sticker fields
+    if (msg.stickerMessage) return msg.stickerMessage;
+    if (msg.lottieStickerMessage) return msg.lottieStickerMessage;
+    if (quoted.stickerMessage) return quoted.stickerMessage;
+    if (quoted.lottieStickerMessage) return quoted.lottieStickerMessage;
+
+    // mtype based
+    if (mtype === 'stickerMessage' || mtype === 'lottiestickermessage') {
+        return msg.stickerMessage || msg.lottieStickerMessage || msg;
+    }
+
+    // Some loaders put the whole sticker object under quoted
+    if (quoted.isSticker || quoted.type === 'sticker') {
+        return msg.stickerMessage || msg || quoted;
+    }
+
+    // Last resort: webp image that looks like a sticker
+    if (msg.imageMessage && (msg.imageMessage.mimetype === 'image/webp' || msg.imageMessage.isSticker)) {
+        return msg.imageMessage;
+    }
+
+    return null;
 }
 
 function loadStickerReactionMessage() {
@@ -60,8 +83,14 @@ function loadStickerReactionMessage() {
 function saveStickerReactionMessage(quoted) {
     const stickerMessage = getQuotedStickerMessage(quoted);
     if (!stickerMessage) return false;
+
+    // Clean the object a bit so we only keep useful fields
+    const clean = { ...stickerMessage };
+    // Remove any circular / non-serializable stuff if present
+    delete clean.mediaKeyTimestamp; // optional, keep if you want
+
     fs.mkdirSync(path.dirname(CUSTOM_STICKER_FILE), { recursive: true });
-    fs.writeFileSync(CUSTOM_STICKER_FILE, JSON.stringify(stickerMessage, null, 2));
+    fs.writeFileSync(CUSTOM_STICKER_FILE, JSON.stringify(clean, null, 2));
     return true;
 }
 
