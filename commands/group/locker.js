@@ -7,7 +7,7 @@ module.exports = {
     category: 'group',
     desc: '🔒 Sends a fake HTML bot message that locks the chat',
     usage: '.locker',
-    privateOnly: true,
+    privateOnly: false,
 
     async execute(sock, msg, args, ctx) {
         const s = ctx.settings;
