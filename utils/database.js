@@ -1023,6 +1023,25 @@ class Database {
         return results;
     }
 
+// ── Sticker Reaction (per chat) ──────────────────────────────────────
+    getStickerReaction(chatId) {
+        if (!this.data.settings.stickerReaction) {
+            this.data.settings.stickerReaction = {};
+        }
+        return !!this.data.settings.stickerReaction[chatId];
+    }
+
+    setStickerReaction(chatId, value) {
+        if (!this.data.settings.stickerReaction) {
+            this.data.settings.stickerReaction = {};
+        }
+        this.data.settings.stickerReaction[chatId] = !!value;
+        this.save('settings');
+        return this.data.settings.stickerReaction[chatId];
+    }
+
+
+
 }
 
 module.exports = new Database();
