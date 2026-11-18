@@ -25,6 +25,7 @@ module.exports = {
 
         const action = String(args[0] || '').trim().toLowerCase();
 
+        // ===== ON / OFF / STATUS =====
         if (['on', 'off', 'status'].includes(action)) {
             const enabled = database.getStickerReaction(from);
 
@@ -45,38 +46,58 @@ module.exports = {
                 : '❌ *Madara sticker reactions disabled* for this chat.');
         }
 
+        // ===== ADD NEW STICKER =====
         if (action === 'add') {
-            if (args.length !== 1 || !getQuotedStickerMessage(m?.quoted)) {
-                return reply('Reply to a sticker and send `.sreact add` to set it as the new Madara reaction sticker.');
+            // Debug helper - remove later if you want
+            // console.log('[SREACT DEBUG] quoted:', JSON.stringify(m?.quoted, null, 2));
+
+            const quotedSticker = getQuotedStickerMessage(m?.quoted);
+
+            if (!quotedSticker) {
+                return reply(
+                    '❌ Could not detect a sticker.\n\n' +
+                    'Make sure you *reply* to a real WhatsApp sticker, then send:\n' +
+                    '`.sreact add`'
+                );
             }
+
             try {
-                saveStickerReactionMessage(m.quoted);
+                const saved = saveStickerReactionMessage(m.quoted);
+                if (!saved) {
+                    return reply('❌ Failed to extract sticker data.');
+                }
                 return reply('✅ New Madara reaction sticker has been sealed.');
             } catch (error) {
-                return reply(`Could not save that sticker reaction: ${error.message}`);
+                console.error('[SREACT]', error);
+                return reply(`❌ Failed to save sticker: ${error.message}`);
             }
         }
 
+        // ===== MANUAL REACT WITH COUNT =====
         const count = parseReactionCount(action);
+
         if (!count) {
             return reply(
                 `🌀 *Madara Sticker Reaction*\n\n` +
                 `• \`.sreact on\` — activate reactions\n` +
                 `• \`.sreact off\` — disable reactions\n` +
                 `• \`.sreact status\` — check current status\n` +
-                `• \`.sreact add\` — seal a new reaction sticker\n` +
+                `• \`.sreact add\` — seal a new reaction sticker (reply to sticker)\n` +
                 `• \`.sreact [1-${MAX_STICKER_REACTION_ATTEMPTS}]\` — react to a replied message`
             );
         }
 
         const targetKey = m?.quoted?.key;
+
         if (!targetKey?.id) {
             return reply('↩️ Reply to the message you want to mark, then send `.sreact [count]`.');
         }
 
         try {
             const sent = await sendStickerReaction(sock, from, targetKey, count);
-            if (!sent) return reply('❌ Sticker reaction is currently unavailable on this connection.');
+            if (!sent) {
+                return reply('❌ Sticker reaction is currently unavailable on this connection.');
+            }
         } catch (error) {
             console.error('[SREACT]', error.message);
             return reply('❌ The Rinnegan failed to mark this message.');
