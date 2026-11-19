@@ -137,8 +137,127 @@ async function prepareMenuMedia(sock, senderId) {
     return null;
 }
 
+/**
+ * Build single_select sections from category catalog.
+ * Row ids stay madara_cat_<key> so handler still opens categories.
+ */
+function buildCategorySections(s) {
+    var categoryRows = Object.entries(getMenuCategoryCatalog()).map(function (entry) {
+        var key = entry[0];
+        var meta = entry[1];
+        return {
+            title: String(meta.e + ' ' + meta.l).slice(0, 24),
+            description: ('View ' + meta.l + ' commands').slice(0, 72),
+            id: 'madara_cat_' + key
+        };
+    });
+
+    var rows = categoryRows.concat([
+        {
+            title: '📢 CHANNEL',
+            description: ('Join ' + (s.botName || 'Madara') + ' channel').slice(0, 72),
+            id: 'madara_channel'
+        }
+    ]);
+
+    var sections = [];
+    for (var i = 0; i < rows.length; i += 10) {
+        var page = Math.floor(i / 10) + 1;
+        var totalPages = Math.ceil(rows.length / 10);
+        sections.push({
+            title: totalPages > 1 ? ('CATEGORIES ' + page + '/' + totalPages) : 'sᴇʟᴇᴄᴛ ᴄᴀᴛᴇɢᴏʀʏ',
+            rows: rows.slice(i, i + 10)
+        });
+    }
+    return sections;
+}
+
+async function sendDefaultInteractiveMenu(sock, msg, ctx, str, headerMedia, sections) {
+    var s = ctx.settings;
+
+    var menuMsg = generateWAMessageFromContent(ctx.from, {
+        interactiveMessage: proto.Message.InteractiveMessage.create({
+            body: proto.Message.InteractiveMessage.Body.create({ text: str }),
+            footer: proto.Message.InteractiveMessage.Footer.create({
+                text: '© Powered by ' + (s.botName || 'MADARA X-MD')
+            }),
+            header: proto.Message.InteractiveMessage.Header.create({
+                title: sc(s.botName || 'MADARA'),
+                hasMediaAttachment: !!(headerMedia && (headerMedia.imageMessage || headerMedia.videoMessage)),
+                imageMessage: (headerMedia && headerMedia.imageMessage) || undefined,
+                videoMessage: (headerMedia && headerMedia.videoMessage) || undefined
+            }),
+            // ONLY single_select — no quick_reply, no mixed
+            nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+                buttons: [
+                    {
+                        name: 'single_select',
+                        buttonParamsJson: JSON.stringify({
+                            title: '📂 ᴍᴀᴅᴀʀᴀ ᴍᴇɴᴜ',
+                            sections: sections
+                        })
+                    }
+                ]
+            })
+        })
+    }, { quoted: msg });
+
+    await sock.relayMessage(ctx.from, menuMsg.message, {
+        messageId: menuMsg.key.id,
+        additionalNodes: [{
+            tag: 'biz',
+            attrs: {},
+            content: [{
+                tag: 'interactive',
+                attrs: { type: 'native_flow', v: '1' },
+                content: [{
+                    tag: 'native_flow',
+                    // single_select only — not "mixed"
+                    attrs: { v: '1', name: 'single_select' }
+                }]
+            }]
+        }]
+    });
+}
+
+/** Plain fallback if interactive is rejected by WA */
+async function sendDefaultFallbackMenu(sock, msg, ctx, str) {
+    var s = ctx.settings;
+    var sections = buildCategorySections(s);
+    var lines = [];
+    sections.forEach(function (sec) {
+        sec.rows.forEach(function (row) {
+            if (row.id === 'madara_channel') {
+                lines.push(row.title + ' — channel');
+            } else {
+                var key = String(row.id || '').replace(/^madara_cat_/, '');
+                lines.push(row.title + ' → ' + (s.prefix || '.') + 'categorymenu ' + key);
+            }
+        });
+    });
+
+    var body = str + '\n\n' + menuBox('📂', 'ᴄᴀᴛᴇɢᴏʀɪᴇs', lines) + (s.FOOTER || '');
+
+    if (fs.existsSync(MENU_IMG)) {
+        await sock.sendMessage(ctx.from, {
+            image: fs.readFileSync(MENU_IMG),
+            caption: body
+        }, { quoted: msg });
+        return;
+    }
+    if (fs.existsSync(MENU_VID)) {
+        await sock.sendMessage(ctx.from, {
+            video: fs.readFileSync(MENU_VID),
+            mimetype: 'video/mp4',
+            caption: body
+        }, { quoted: msg });
+        return;
+    }
+    await sock.sendMessage(ctx.from, { text: body }, { quoted: msg });
+}
+
 async function execute(sock, msg, args, ctx) {
-    // Design engine
+    // Design engine (abyss, pain, pack skins, …)
     try {
         var menuEngine = require('../../lib/menuEngine');
         var chatId = msg.chat || ctx.from;
@@ -180,76 +299,15 @@ async function execute(sock, msg, args, ctx) {
         '*Q̲ᴜɪᴄᴋ:* ' + prefix + 'ʙᴏᴛᴍᴇɴᴜ | ' + prefix + 'ɢʀᴏᴜᴘᴍᴇɴᴜ | ' + prefix + 'ᴅʟᴍᴇɴᴜ';
 
     var headerMedia = await prepareMenuMedia(sock, ctx.sender);
+    var sections = buildCategorySections(s);
 
-    var categoryRows = Object.entries(getMenuCategoryCatalog()).map(function (entry) {
-        var key = entry[0];
-        var meta = entry[1];
-        return {
-            title: meta.e + ' ' + meta.l,
-            description: 'View ' + meta.l + ' commands',
-            id: 'madara_cat_' + key
-        };
-    });
-    var rows = categoryRows.concat([
-        { title: '📢 CHANNEL', description: 'Join ' + s.botName + ' channel', id: 'madara_channel' }
-    ]);
-
-    var sections = [];
-    for (var i = 0; i < rows.length; i += 10) {
-        var page = Math.floor(i / 10) + 1;
-        var totalPages = Math.ceil(rows.length / 10);
-        sections.push({
-            title: totalPages > 1 ? ('CATEGORIES ' + page + '/' + totalPages) : 'sᴇʟᴇᴄᴛ ᴄᴀᴛᴇɢᴏʀʏ',
-            rows: rows.slice(i, i + 10)
-        });
+    try {
+        await sendDefaultInteractiveMenu(sock, msg, ctx, str, headerMedia, sections);
+    } catch (e) {
+        console.error('[menu] interactive single_select failed → text fallback:', e.message);
+        await sendDefaultFallbackMenu(sock, msg, ctx, str);
     }
 
-    var menuMsg = generateWAMessageFromContent(ctx.from, {
-        interactiveMessage: proto.Message.InteractiveMessage.create({
-            body: proto.Message.InteractiveMessage.Body.create({ text: str }),
-            footer: proto.Message.InteractiveMessage.Footer.create({
-                text: '© Powered by ' + s.botName
-            }),
-            header: proto.Message.InteractiveMessage.Header.create({
-                title: sc(s.botName),
-                hasMediaAttachment: !!(headerMedia && (headerMedia.imageMessage || headerMedia.videoMessage)),
-                imageMessage: (headerMedia && headerMedia.imageMessage) || undefined,
-                videoMessage: (headerMedia && headerMedia.videoMessage) || undefined
-            }),
-            nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-                buttons: [
-                    {
-                        name: 'quick_reply',
-                        buttonParamsJson: JSON.stringify({ display_text: '⚙️ SYSTEM', id: 'madara_cat_system' })
-                    },
-                    {
-                        name: 'quick_reply',
-                        buttonParamsJson: JSON.stringify({ display_text: '👥 GROUP', id: 'madara_cat_group' })
-                    },
-                    {
-                        name: 'single_select',
-                        buttonParamsJson: JSON.stringify({ title: '📂 ᴍᴀᴅᴀʀᴀ ᴍᴇɴᴜ', sections: sections })
-                    }
-                ]
-            })
-        })
-    }, { quoted: msg });
-
-    // 1) MENU FIRST
-    await sock.relayMessage(ctx.from, menuMsg.message, {
-        messageId: menuMsg.key.id,
-        additionalNodes: [{
-            tag: 'biz',
-            attrs: {},
-            content: [{
-                tag: 'interactive',
-                attrs: { type: 'native_flow', v: '1' },
-                content: [{ tag: 'native_flow', attrs: { v: '9', name: 'mixed' } }]
-            }]
-        }]
-    });
-
-    // 2) AUDIO AFTER MENU
     if (fs.existsSync(MENU_AUDIO)) {
         try {
             await sock.sendMessage(ctx.from, {
