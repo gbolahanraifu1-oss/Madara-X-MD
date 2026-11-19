@@ -31,25 +31,40 @@ module.exports = {
             message: ctxInfo.quotedMessage,
         };
 
-        const tmsg = target.message || {};
+        let tmsg = target.message || {};
 
-        // DEEP EXTRACTION: Look inside every possible wrapper
-        const voMsg  = tmsg.viewOnceMessage?.message
-            || tmsg.viewOnceMessageV2?.message
-            || tmsg.viewOnceMessageV2Extension?.message
-            || tmsg;
+        // ── DEEP UNWRAP ──
+        if (tmsg.viewOnceMessage) tmsg = tmsg.viewOnceMessage.message;
+        if (tmsg.viewOnceMessageV2) tmsg = tmsg.viewOnceMessageV2.message;
+        if (tmsg.viewOnceMessageV2Extension) tmsg = tmsg.viewOnceMessageV2Extension.message;
+        if (tmsg.documentWithCaptionMessage) tmsg = tmsg.documentWithCaptionMessage.message;
 
-        const imgMsg = voMsg?.imageMessage || tmsg.imageMessage;
-        const vidMsg = voMsg?.videoMessage || tmsg.videoMessage;
-        const audMsg = voMsg?.audioMessage || tmsg.audioMessage;
+        const imgMsg = tmsg.imageMessage;
+        const vidMsg = tmsg.videoMessage;
+        const audMsg = tmsg.audioMessage;
 
         if (!imgMsg && !vidMsg && !audMsg) {
             return dm(`❌ No media found in that message.${s.FOOTER}`).catch(() => {});
         }
 
+        let actualMedia = null;
+        let mtype = null;
+
+        if (imgMsg) { actualMedia = imgMsg; mtype = 'image'; }
+        else if (vidMsg) { actualMedia = vidMsg; mtype = 'video'; }
+        else if (audMsg) { actualMedia = audMsg; mtype = 'audio'; }
+
+        if (!actualMedia.url && !actualMedia.directPath) {
+             return dm(`❌ Media URL is missing from the payload. WhatsApp stripped it.${s.FOOTER}`).catch(() => {});
+        }
+
         try {
-            const downloadTarget = { key: target.key, message: voMsg };
-            
+            // Re-wrap cleanly for downloader
+            const downloadTarget = {
+                key: target.key,
+                message: { [`${mtype}Message`]: actualMedia } 
+            };
+
             const buf = await downloadMediaMessage(
                 downloadTarget,
                 'buffer',
@@ -59,21 +74,16 @@ module.exports = {
 
             if (!buf || buf.length === 0) throw new Error('Empty media buffer');
 
-            if (imgMsg) {
+            if (mtype === 'image') {
                 await dm({ image: buf, caption: `👻 *ɢʜᴏsᴛ — ᴠɪᴇᴡ-ᴏɴᴄᴇ ʀᴇᴠᴇᴀʟᴇᴅ*${s.FOOTER}` });
-            } else if (vidMsg) {
+            } else if (mtype === 'video') {
                 await dm({ video: buf, caption: `👻 *ɢʜᴏsᴛ — ᴠɪᴇᴡ-ᴏɴᴄᴇ ᴠɪᴅᴇᴏ ʀᴇᴠᴇᴀʟᴇᴅ*${s.FOOTER}` });
-            } else if (audMsg) {
+            } else if (mtype === 'audio') {
                 await dm({ audio: buf, mimetype: 'audio/ogg; codecs=opus', ptt: false });
             }
             
         } catch (e) {
-            // CATCH THE EXACT ERROR
-            let errorMsg = e.message;
-            if (errorMsg.includes('No valid media URL') || errorMsg.includes('directPath')) {
-                errorMsg = "Media has expired or was already opened. You must reply to a *fresh* (unopened) view-once message.";
-            }
-            await dm(`❌ *ɢʜᴏsᴛ ғᴀɪʟᴇᴅ:* ${errorMsg}${s.FOOTER}`).catch(() => {});
+            await dm(`❌ *ɢʜᴏsᴛ ғᴀɪʟᴇᴅ:* ${e.message}${s.FOOTER}`).catch(() => {});
             console.error('[Ghost] error:', e.message);
         }
     }
