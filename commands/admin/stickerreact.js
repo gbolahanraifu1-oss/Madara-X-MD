@@ -49,21 +49,15 @@ module.exports = {
 
         // ===== ADD NEW STICKER =====
         if (action === 'add') {
-            // Fallback to pull the raw quote data if m.quoted is missing it
-            const rawQuoted = m?.quoted || {
-                message: msg.message?.extendedTextMessage?.contextInfo?.quotedMessage,
-                key: { id: msg.message?.extendedTextMessage?.contextInfo?.stanzaId }
+            // Check if m.quoted exists, otherwise build it manually from the message context
+            const quoted = m?.quoted || {
+                message: msg?.message?.extendedTextMessage?.contextInfo?.quotedMessage,
+                key: { id: msg?.message?.extendedTextMessage?.contextInfo?.stanzaId }
             };
 
-            // Deep unwrap
-            let tmsg = rawQuoted.message || {};
-            if (tmsg.viewOnceMessageV2) tmsg = tmsg.viewOnceMessageV2.message;
-            if (tmsg.viewOnceMessage) tmsg = tmsg.viewOnceMessage.message;
-            if (tmsg.documentWithCaptionMessage) tmsg = tmsg.documentWithCaptionMessage.message;
+            const quotedSticker = getQuotedStickerMessage(quoted);
 
-            const stickerMsg = tmsg.stickerMessage;
-
-            if (!stickerMsg) {
+            if (!quotedSticker) {
                 return reply(
                     '❌ Could not detect a sticker.\n\n' +
                     'Make sure you *reply* to a real WhatsApp sticker, then send:\n' +
@@ -72,10 +66,7 @@ module.exports = {
             }
 
             try {
-                // We pass a reconstructed object so the utility function always finds it
-                const cleanQuoted = { message: { stickerMessage: stickerMsg }, key: rawQuoted.key };
-                const saved = saveStickerReactionMessage(cleanQuoted);
-                
+                const saved = saveStickerReactionMessage(quoted);
                 if (!saved) {
                     return reply('❌ Failed to extract sticker data.');
                 }
@@ -100,10 +91,11 @@ module.exports = {
             );
         }
 
+        // FIX: Safely fall back to raw contextInfo for the target key
         const targetKey = m?.quoted?.key || {
             remoteJid: from,
-            id: msg.message?.extendedTextMessage?.contextInfo?.stanzaId,
-            participant: msg.message?.extendedTextMessage?.contextInfo?.participant
+            id: msg?.message?.extendedTextMessage?.contextInfo?.stanzaId,
+            participant: msg?.message?.extendedTextMessage?.contextInfo?.participant
         };
 
         if (!targetKey?.id) {
