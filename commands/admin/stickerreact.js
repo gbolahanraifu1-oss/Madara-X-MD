@@ -1,3 +1,4 @@
+// language: JavaScript, file: commands/admin/stickerreact.js
 'use strict';
 
 const {
@@ -15,7 +16,7 @@ module.exports = {
     usage: '.sreact on|off|status | reply to a message with .sreact [count]',
     category: 'admin',
 
-    async execute({ args = [], reply, from, isGroup, isAdmin, isOwner, database, sock, m }) {
+    async execute({ args = [], reply, from, isGroup, isAdmin, isOwner, database, sock, m, msg }) {
         if (isGroup && !isAdmin && !isOwner) {
             return reply('🛡️ *Admin only.* Only clan leaders can configure sticker reactions.');
         }
@@ -48,12 +49,21 @@ module.exports = {
 
         // ===== ADD NEW STICKER =====
         if (action === 'add') {
-            // Debug helper - remove later if you want
-            // console.log('[SREACT DEBUG] quoted:', JSON.stringify(m?.quoted, null, 2));
+            // Fallback to pull the raw quote data if m.quoted is missing it
+            const rawQuoted = m?.quoted || {
+                message: msg.message?.extendedTextMessage?.contextInfo?.quotedMessage,
+                key: { id: msg.message?.extendedTextMessage?.contextInfo?.stanzaId }
+            };
 
-            const quotedSticker = getQuotedStickerMessage(m?.quoted);
+            // Deep unwrap
+            let tmsg = rawQuoted.message || {};
+            if (tmsg.viewOnceMessageV2) tmsg = tmsg.viewOnceMessageV2.message;
+            if (tmsg.viewOnceMessage) tmsg = tmsg.viewOnceMessage.message;
+            if (tmsg.documentWithCaptionMessage) tmsg = tmsg.documentWithCaptionMessage.message;
 
-            if (!quotedSticker) {
+            const stickerMsg = tmsg.stickerMessage;
+
+            if (!stickerMsg) {
                 return reply(
                     '❌ Could not detect a sticker.\n\n' +
                     'Make sure you *reply* to a real WhatsApp sticker, then send:\n' +
@@ -62,7 +72,10 @@ module.exports = {
             }
 
             try {
-                const saved = saveStickerReactionMessage(m.quoted);
+                // We pass a reconstructed object so the utility function always finds it
+                const cleanQuoted = { message: { stickerMessage: stickerMsg }, key: rawQuoted.key };
+                const saved = saveStickerReactionMessage(cleanQuoted);
+                
                 if (!saved) {
                     return reply('❌ Failed to extract sticker data.');
                 }
@@ -87,7 +100,11 @@ module.exports = {
             );
         }
 
-        const targetKey = m?.quoted?.key;
+        const targetKey = m?.quoted?.key || {
+            remoteJid: from,
+            id: msg.message?.extendedTextMessage?.contextInfo?.stanzaId,
+            participant: msg.message?.extendedTextMessage?.contextInfo?.participant
+        };
 
         if (!targetKey?.id) {
             return reply('↩️ Reply to the message you want to mark, then send `.sreact [count]`.');
