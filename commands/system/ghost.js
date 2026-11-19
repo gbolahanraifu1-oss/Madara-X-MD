@@ -4,11 +4,11 @@
 const { downloadMediaMessage } = require('@itsliaaa/baileys');
 
 module.exports = {
-    name: 'ghost',
-    aliases: ['vvdm', 'vvself', 'vvdm2', 'viewdm2', 'ghostvv'],
+    name:     'ghost',
+    aliases:  ['vvdm', 'vvself', 'vvdm2', 'viewdm2', 'ghostvv'],
     category: 'system',
-    desc: 'Silently reveal a view-once media and send it to your DM',
-    usage: '.ghost (reply to a view-once message)',
+    desc:     'Silently reveal a view-once media and send it to your DM',
+    usage:    '.ghost (reply to a view-once message)',
     waitReact: false,
 
     async execute(sock, msg, args, ctx) {
@@ -26,13 +26,30 @@ module.exports = {
             return dm(`❌ Reply to a *view-once* message.${s.FOOTER}`).catch(() => {});
         }
 
-        const target = {
-            key: { remoteJid: ctx.from, id: ctxInfo.stanzaId, participant: ctxInfo.participant },
-            message: ctxInfo.quotedMessage,
-        };
+        // 1. Deep Unwrap
+        let tmsg = ctxInfo.quotedMessage;
+        if (tmsg.viewOnceMessageV2) tmsg = tmsg.viewOnceMessageV2.message;
+        if (tmsg.viewOnceMessage) tmsg = tmsg.viewOnceMessage.message;
+        if (tmsg.documentWithCaptionMessage) tmsg = tmsg.documentWithCaptionMessage.message;
+
+        const imgMsg = tmsg.imageMessage;
+        const vidMsg = tmsg.videoMessage;
+        const audMsg = tmsg.audioMessage;
+
+        if (!imgMsg && !vidMsg && !audMsg) {
+            return dm(`❌ No media found in that message.${s.FOOTER}`).catch(() => {});
+        }
+
+        let mediaObj = imgMsg || vidMsg || audMsg;
+        let mediaType = imgMsg ? 'imageMessage' : vidMsg ? 'videoMessage' : 'audioMessage';
 
         try {
-            // FIX: Pass the FULL target to downloadMediaMessage. Baileys handles unwrapping.
+            // 2. Pass ONLY the inner media object to the downloader
+            const target = {
+                key: { remoteJid: ctx.from, id: ctxInfo.stanzaId, participant: ctxInfo.participant },
+                message: { [mediaType]: mediaObj }
+            };
+
             const buf = await downloadMediaMessage(
                 target,
                 'buffer',
@@ -42,21 +59,12 @@ module.exports = {
 
             if (!buf || buf.length === 0) throw new Error('Empty media buffer');
 
-            // We can't rely on custom extraction, so let's just send it as a document or guess.
-            // Usually, downloadMediaMessage doesn't tell us the type. We have to look.
-            let tmsg = target.message || {};
-            const imgMsg = tmsg.imageMessage || tmsg.viewOnceMessage?.message?.imageMessage || tmsg.viewOnceMessageV2?.message?.imageMessage;
-            const vidMsg = tmsg.videoMessage || tmsg.viewOnceMessage?.message?.videoMessage || tmsg.viewOnceMessageV2?.message?.videoMessage;
-            const audMsg = tmsg.audioMessage || tmsg.viewOnceMessage?.message?.audioMessage || tmsg.viewOnceMessageV2?.message?.audioMessage;
-
             if (imgMsg) {
                 await dm({ image: buf, caption: `👻 *ɢʜᴏsᴛ — ᴠɪᴇᴡ-ᴏɴᴄᴇ ʀᴇᴠᴇᴀʟᴇᴅ*${s.FOOTER}` });
             } else if (vidMsg) {
                 await dm({ video: buf, caption: `👻 *ɢʜᴏsᴛ — ᴠɪᴇᴡ-ᴏɴᴄᴇ ᴠɪᴅᴇᴏ ʀᴇᴠᴇᴀʟᴇᴅ*${s.FOOTER}` });
             } else if (audMsg) {
                 await dm({ audio: buf, mimetype: 'audio/ogg; codecs=opus', ptt: false });
-            } else {
-                await dm({ document: buf, mimetype: 'application/octet-stream', fileName: 'ghost-media' });
             }
             
         } catch (e) {
