@@ -1,3 +1,4 @@
+// language: JavaScript, file: utils/mediaHelper.js
 'use strict';
 
 const MEDIA_TYPES = [
@@ -7,28 +8,23 @@ const MEDIA_TYPES = [
     ['documentMessage', 'document'],
 ];
 
-// Baileys can place view-once content behind ephemeral, caption, edited, or
-// any of the three view-once envelope versions. Keep traversal bounded because
-// decrypted message objects may contain large metadata trees.
-const WRAPPER_KEYS = [
-    'viewOnceMessageV2Extension',
-    'viewOnceMessageV2',
-    'viewOnceMessage',
-];
-const TRANSPORT_KEYS = [
-    'ephemeralMessage',
-    'documentWithCaptionMessage',
-    'editedMessage',
-];
+const WRAPPER_KEYS = ['viewOnceMessageV2Extension', 'viewOnceMessageV2', 'viewOnceMessage'];
+const TRANSPORT_KEYS = ['ephemeralMessage', 'documentWithCaptionMessage', 'editedMessage'];
 
 function isObject(value) {
     return !!value && typeof value === 'object' && !Buffer.isBuffer(value);
 }
 
+// FIX: Reconstruct the wrapper so Baileys gets the exact structure
 function nestedMessage(node, key) {
     const value = node?.[key];
     if (!value) return null;
-    return value.message || value;
+    
+    // If it has a .message, return the whole wrapper node
+    if (value.message) {
+        return { [key]: value }; 
+    }
+    return { [key]: value };
 }
 
 function directMedia(node) {
@@ -64,9 +60,6 @@ function extractViewOnce(node, depth = 0, seen = new Set()) {
     if (!isObject(node) || depth > 12 || seen.has(node)) return null;
     seen.add(node);
 
-    // Some WhatsApp clients omit the wrapper and leave the view-once marker
-    // directly on the media node. Treat only an explicit marker as view-once;
-    // ordinary images/videos must never be auto-forwarded.
     const direct = directMedia(node);
     if (direct && direct.mediaMsg?.viewOnce === true) {
         return { ...direct, isViewOnce: true, wrapper: 'direct-media-flag' };
@@ -76,7 +69,8 @@ function extractViewOnce(node, depth = 0, seen = new Set()) {
         const inner = nestedMessage(node, key);
         if (!inner) continue;
         const found = findMedia(inner);
-        if (found) return { ...found, isViewOnce: true, wrapper: key };
+        // FIX: Return the full wrapper object, not just the inner media
+        if (found) return { ...found, isViewOnce: true, wrapper: inner, fullMessage: inner };
         const nested = extractViewOnce(inner, depth + 1, seen);
         if (nested) return nested;
     }
