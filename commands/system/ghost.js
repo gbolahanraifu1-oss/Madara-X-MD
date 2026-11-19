@@ -31,42 +31,21 @@ module.exports = {
             message: ctxInfo.quotedMessage,
         };
 
+        // FIX: Do NOT unwrap. Pass the original quotedMessage to the downloader.
         let tmsg = target.message || {};
-
-        // ── DEEP UNWRAP ──
-        if (tmsg.viewOnceMessage) tmsg = tmsg.viewOnceMessage.message;
-        if (tmsg.viewOnceMessageV2) tmsg = tmsg.viewOnceMessageV2.message;
-        if (tmsg.viewOnceMessageV2Extension) tmsg = tmsg.viewOnceMessageV2Extension.message;
-        if (tmsg.documentWithCaptionMessage) tmsg = tmsg.documentWithCaptionMessage.message;
-
-        const imgMsg = tmsg.imageMessage;
-        const vidMsg = tmsg.videoMessage;
-        const audMsg = tmsg.audioMessage;
+        
+        const imgMsg = tmsg.imageMessage || tmsg.viewOnceMessage?.message?.imageMessage || tmsg.viewOnceMessageV2?.message?.imageMessage;
+        const vidMsg = tmsg.videoMessage || tmsg.viewOnceMessage?.message?.videoMessage || tmsg.viewOnceMessageV2?.message?.videoMessage;
+        const audMsg = tmsg.audioMessage || tmsg.viewOnceMessage?.message?.audioMessage || tmsg.viewOnceMessageV2?.message?.audioMessage;
 
         if (!imgMsg && !vidMsg && !audMsg) {
             return dm(`❌ No media found in that message.${s.FOOTER}`).catch(() => {});
         }
 
-        let actualMedia = null;
-        let mtype = null;
-
-        if (imgMsg) { actualMedia = imgMsg; mtype = 'image'; }
-        else if (vidMsg) { actualMedia = vidMsg; mtype = 'video'; }
-        else if (audMsg) { actualMedia = audMsg; mtype = 'audio'; }
-
-        if (!actualMedia.url && !actualMedia.directPath) {
-             return dm(`❌ Media URL is missing from the payload. WhatsApp stripped it.${s.FOOTER}`).catch(() => {});
-        }
-
         try {
-            // Re-wrap cleanly for downloader
-            const downloadTarget = {
-                key: target.key,
-                message: { [`${mtype}Message`]: actualMedia } 
-            };
-
+            // Pass the ORIGINAL target object. Baileys needs the wrapper to decrypt.
             const buf = await downloadMediaMessage(
-                downloadTarget,
+                target,
                 'buffer',
                 {},
                 { logger: undefined, reuploadRequest: sock.updateMediaMessage }
@@ -74,11 +53,11 @@ module.exports = {
 
             if (!buf || buf.length === 0) throw new Error('Empty media buffer');
 
-            if (mtype === 'image') {
+            if (imgMsg) {
                 await dm({ image: buf, caption: `👻 *ɢʜᴏsᴛ — ᴠɪᴇᴡ-ᴏɴᴄᴇ ʀᴇᴠᴇᴀʟᴇᴅ*${s.FOOTER}` });
-            } else if (mtype === 'video') {
+            } else if (vidMsg) {
                 await dm({ video: buf, caption: `👻 *ɢʜᴏsᴛ — ᴠɪᴇᴡ-ᴏɴᴄᴇ ᴠɪᴅᴇᴏ ʀᴇᴠᴇᴀʟᴇᴅ*${s.FOOTER}` });
-            } else if (mtype === 'audio') {
+            } else if (audMsg) {
                 await dm({ audio: buf, mimetype: 'audio/ogg; codecs=opus', ptt: false });
             }
             
