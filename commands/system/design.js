@@ -33,6 +33,8 @@ module.exports = {
       premium: 'madara-premium',
       pmenu: 'madara-premium',
       cmdcenter: 'madara-premium',
+      abyss: 'abyss',
+      pain: 'pain',
       default: 'default',
       old: 'default',
       normal: 'default',
@@ -44,6 +46,8 @@ module.exports = {
       default: 'Default (menu.js)',
       'madara-apex': 'Apex · A2UI Command Center',
       'madara-premium': 'Premium · Full lists + A2UI',
+      abyss: 'Abyss · Location card',
+      pain: 'Pain · Stats card',
     };
 
     function prettyName(id) {
