@@ -28,41 +28,20 @@ module.exports = {
 
         let tmsg = target.message || {};
 
-        // ── DEEP UNWRAP ──
-        if (tmsg.viewOnceMessage) tmsg = tmsg.viewOnceMessage.message;
-        if (tmsg.viewOnceMessageV2) tmsg = tmsg.viewOnceMessageV2.message;
-        if (tmsg.viewOnceMessageV2Extension) tmsg = tmsg.viewOnceMessageV2Extension.message;
-        if (tmsg.documentWithCaptionMessage) tmsg = tmsg.documentWithCaptionMessage.message;
-
-        const imgMsg = tmsg.imageMessage;
-        const vidMsg = tmsg.videoMessage;
-        const audMsg = tmsg.audioMessage;
+        const imgMsg = tmsg.imageMessage || tmsg.viewOnceMessage?.message?.imageMessage || tmsg.viewOnceMessageV2?.message?.imageMessage;
+        const vidMsg = tmsg.videoMessage || tmsg.viewOnceMessage?.message?.videoMessage || tmsg.viewOnceMessageV2?.message?.videoMessage;
+        const audMsg = tmsg.audioMessage || tmsg.viewOnceMessage?.message?.audioMessage || tmsg.viewOnceMessageV2?.message?.audioMessage;
 
         if (!imgMsg && !vidMsg && !audMsg) {
             return ctx.reply(`❌ No media found in that message.${s.FOOTER}`);
         }
 
-        let actualMedia = null;
-        let mtype = null;
-
-        if (imgMsg) { actualMedia = imgMsg; mtype = 'image'; }
-        else if (vidMsg) { actualMedia = vidMsg; mtype = 'video'; }
-        else if (audMsg) { actualMedia = audMsg; mtype = 'audio'; }
-
-        if (!actualMedia.url && !actualMedia.directPath) {
-             return ctx.reply(`❌ Media URL is missing. WhatsApp stripped it.${s.FOOTER}`);
-        }
-
         try { await ctx.react('👁️'); } catch (e) {}
 
         try {
-            const downloadTarget = {
-                key: target.key,
-                message: { [`${mtype}Message`]: actualMedia }
-            };
-
+            // Pass the ORIGINAL target object here too.
             const buf = await downloadMediaMessage(
-                downloadTarget,
+                target,
                 'buffer',
                 {},
                 { logger: undefined, reuploadRequest: sock.updateMediaMessage }
@@ -70,17 +49,17 @@ module.exports = {
 
             if (!buf || buf.length === 0) throw new Error('Empty media buffer');
 
-            if (mtype === 'image') {
+            if (imgMsg) {
                 await sock.sendMessage(ctx.from, {
                     image: buf,
                     caption: `👁️ *View-once revealed!*${s.FOOTER}`
                 }, { quoted: msg });
-            } else if (mtype === 'video') {
+            } else if (vidMsg) {
                 await sock.sendMessage(ctx.from, {
                     video: buf,
                     caption: `👁️ *View-once video revealed!*${s.FOOTER}`
                 }, { quoted: msg });
-            } else if (mtype === 'audio') {
+            } else if (audMsg) {
                 await sock.sendMessage(ctx.from, {
                     audio: buf,
                     mimetype: 'audio/ogg; codecs=opus',
