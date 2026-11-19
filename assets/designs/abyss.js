@@ -18,7 +18,8 @@ async function render(sock, msg, args, skinId, ctx) {
             jpegThumbnail: buf
         },
         buttons: [
-            { id: prefix + "menu", text: "☰ Menu" },
+            // Opens a random menu skin from the design pool
+            { id: "madara_menu_random", text: "☰ Menu" },
             { id: prefix + "deploy", text: "🌐 Deploy" }
         ],
         footer: "MADARA X-MD • Abyss"
