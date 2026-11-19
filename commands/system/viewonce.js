@@ -21,25 +21,32 @@ module.exports = {
             return ctx.reply(`❌ Reply to a *view-once* photo or video to reveal it.${s.FOOTER}`);
         }
 
-        const target = {
-            key: { remoteJid: ctx.from, id: ctxInfo.stanzaId, participant: ctxInfo.participant },
-            message: ctxInfo.quotedMessage
-        };
+        // 1. Deep Unwrap
+        let tmsg = ctxInfo.quotedMessage;
+        if (tmsg.viewOnceMessageV2) tmsg = tmsg.viewOnceMessageV2.message;
+        if (tmsg.viewOnceMessage) tmsg = tmsg.viewOnceMessage.message;
+        if (tmsg.documentWithCaptionMessage) tmsg = tmsg.documentWithCaptionMessage.message;
 
-        let tmsg = target.message || {};
-
-        const imgMsg = tmsg.imageMessage || tmsg.viewOnceMessage?.message?.imageMessage || tmsg.viewOnceMessageV2?.message?.imageMessage;
-        const vidMsg = tmsg.videoMessage || tmsg.viewOnceMessage?.message?.videoMessage || tmsg.viewOnceMessageV2?.message?.videoMessage;
-        const audMsg = tmsg.audioMessage || tmsg.viewOnceMessage?.message?.audioMessage || tmsg.viewOnceMessageV2?.message?.audioMessage;
+        const imgMsg = tmsg.imageMessage;
+        const vidMsg = tmsg.videoMessage;
+        const audMsg = tmsg.audioMessage;
 
         if (!imgMsg && !vidMsg && !audMsg) {
             return ctx.reply(`❌ No media found in that message.${s.FOOTER}`);
         }
 
+        let mediaObj = imgMsg || vidMsg || audMsg;
+        let mediaType = imgMsg ? 'imageMessage' : vidMsg ? 'videoMessage' : 'audioMessage';
+
         try { await ctx.react('👁️'); } catch (e) {}
 
         try {
-            // Pass the ORIGINAL target object here too.
+            // 2. Pass ONLY the inner media object to the downloader
+            const target = {
+                key: { remoteJid: ctx.from, id: ctxInfo.stanzaId, participant: ctxInfo.participant },
+                message: { [mediaType]: mediaObj }
+            };
+
             const buf = await downloadMediaMessage(
                 target,
                 'buffer',
