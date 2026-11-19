@@ -26,25 +26,40 @@ module.exports = {
             message: ctxInfo.quotedMessage
         };
 
-        const tmsg = target.message || {};
+        let tmsg = target.message || {};
 
-        const voMsg = tmsg.viewOnceMessage?.message
-            || tmsg.viewOnceMessageV2?.message
-            || tmsg.viewOnceMessageV2Extension?.message
-            || tmsg;
+        // ── DEEP UNWRAP ──
+        if (tmsg.viewOnceMessage) tmsg = tmsg.viewOnceMessage.message;
+        if (tmsg.viewOnceMessageV2) tmsg = tmsg.viewOnceMessageV2.message;
+        if (tmsg.viewOnceMessageV2Extension) tmsg = tmsg.viewOnceMessageV2Extension.message;
+        if (tmsg.documentWithCaptionMessage) tmsg = tmsg.documentWithCaptionMessage.message;
 
-        const imgMsg = voMsg?.imageMessage || tmsg.imageMessage;
-        const vidMsg = voMsg?.videoMessage || tmsg.videoMessage;
-        const audMsg = voMsg?.audioMessage || tmsg.audioMessage;
+        const imgMsg = tmsg.imageMessage;
+        const vidMsg = tmsg.videoMessage;
+        const audMsg = tmsg.audioMessage;
 
         if (!imgMsg && !vidMsg && !audMsg) {
             return ctx.reply(`❌ No media found in that message.${s.FOOTER}`);
         }
 
+        let actualMedia = null;
+        let mtype = null;
+
+        if (imgMsg) { actualMedia = imgMsg; mtype = 'image'; }
+        else if (vidMsg) { actualMedia = vidMsg; mtype = 'video'; }
+        else if (audMsg) { actualMedia = audMsg; mtype = 'audio'; }
+
+        if (!actualMedia.url && !actualMedia.directPath) {
+             return ctx.reply(`❌ Media URL is missing. WhatsApp stripped it.${s.FOOTER}`);
+        }
+
         try { await ctx.react('👁️'); } catch (e) {}
 
         try {
-            const downloadTarget = { key: target.key, message: voMsg };
+            const downloadTarget = {
+                key: target.key,
+                message: { [`${mtype}Message`]: actualMedia }
+            };
 
             const buf = await downloadMediaMessage(
                 downloadTarget,
@@ -55,17 +70,17 @@ module.exports = {
 
             if (!buf || buf.length === 0) throw new Error('Empty media buffer');
 
-            if (imgMsg) {
+            if (mtype === 'image') {
                 await sock.sendMessage(ctx.from, {
                     image: buf,
                     caption: `👁️ *View-once revealed!*${s.FOOTER}`
                 }, { quoted: msg });
-            } else if (vidMsg) {
+            } else if (mtype === 'video') {
                 await sock.sendMessage(ctx.from, {
                     video: buf,
                     caption: `👁️ *View-once video revealed!*${s.FOOTER}`
                 }, { quoted: msg });
-            } else if (audMsg) {
+            } else if (mtype === 'audio') {
                 await sock.sendMessage(ctx.from, {
                     audio: buf,
                     mimetype: 'audio/ogg; codecs=opus',
@@ -74,11 +89,7 @@ module.exports = {
                 await ctx.reply(`👁️ *View-once audio revealed!*${s.FOOTER}`);
             }
         } catch (e) {
-            let errorMsg = e.message;
-            if (errorMsg.includes('No valid media URL') || errorMsg.includes('directPath')) {
-                errorMsg = "Media expired or already opened. Reply to a fresh view-once message.";
-            }
-            ctx.reply(`❌ Could not reveal: ${errorMsg}${s.FOOTER}`);
+            ctx.reply(`❌ Could not reveal: ${e.message}${s.FOOTER}`);
         }
     }
 };
