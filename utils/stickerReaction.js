@@ -1,9 +1,9 @@
+// language: JavaScript, file: utils/stickerReaction.js
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
 
-// Exact animated sticker payload for Madara sticker reactions.
 const STICKER_REACTION = Object.freeze({
     url: 'https://mmg.whatsapp.net/o1/v/t24/f2/m232/AQPEoFVa7kEaTxJ5N4kBacoDZ1k0IzHqkfsmUhLxV8C4xB11yCktX6UEHvkJnmgTsnEhoRW27_Pma0f92oVnKzwBB4YUsMbtz2HlS_Oxeg?ccb=9-4&oh=01_Q5Aa5wEK3E2DIH-ZBY_naItwmTshYSHL2bClVxX2UUGd6_gOyw&oe=6B0DB1D3&_nc_sid=e6ed6c&mms3=true',
     fileSha256: 'BsnVlbXyY2a722AugpS5TLIuxPNmaHRU2Hi9vL90USY=',
@@ -38,27 +38,20 @@ function parseReactionCount(value) {
 function getQuotedStickerMessage(quoted) {
     if (!quoted) return null;
 
-    // Different bots structure quoted differently
-    const msg = quoted.message || quoted.msg || quoted;
-    const mtype = (quoted.mtype || msg.mtype || '').toLowerCase();
+    let msg = quoted.message || quoted.msg || quoted;
+    
+    // FIX: Deep unwrap for modern WhatsApp wrappers
+    if (msg.viewOnceMessageV2) msg = msg.viewOnceMessageV2.message;
+    if (msg.viewOnceMessage) msg = msg.viewOnceMessage.message;
+    if (msg.documentWithCaptionMessage) msg = msg.documentWithCaptionMessage.message;
 
-    // Direct sticker fields
     if (msg.stickerMessage) return msg.stickerMessage;
     if (msg.lottieStickerMessage) return msg.lottieStickerMessage;
+    
+    // Check if the quoted object itself IS the sticker
     if (quoted.stickerMessage) return quoted.stickerMessage;
-    if (quoted.lottieStickerMessage) return quoted.lottieStickerMessage;
-
-    // mtype based
-    if (mtype === 'stickerMessage' || mtype === 'lottiestickermessage') {
-        return msg.stickerMessage || msg.lottieStickerMessage || msg;
-    }
-
-    // Some loaders put the whole sticker object under quoted
-    if (quoted.isSticker || quoted.type === 'sticker') {
-        return msg.stickerMessage || msg || quoted;
-    }
-
-    // Last resort: webp image that looks like a sticker
+    
+    // Fallback for image/webp
     if (msg.imageMessage && (msg.imageMessage.mimetype === 'image/webp' || msg.imageMessage.isSticker)) {
         return msg.imageMessage;
     }
@@ -84,10 +77,8 @@ function saveStickerReactionMessage(quoted) {
     const stickerMessage = getQuotedStickerMessage(quoted);
     if (!stickerMessage) return false;
 
-    // Clean the object a bit so we only keep useful fields
     const clean = { ...stickerMessage };
-    // Remove any circular / non-serializable stuff if present
-    delete clean.mediaKeyTimestamp; // optional, keep if you want
+    delete clean.mediaKeyTimestamp;
 
     fs.mkdirSync(path.dirname(CUSTOM_STICKER_FILE), { recursive: true });
     fs.writeFileSync(CUSTOM_STICKER_FILE, JSON.stringify(clean, null, 2));
