@@ -38,7 +38,7 @@ function loadCookiesTxt() {
 }
 const COOKIE_STRING = process.env.YT_COOKIES || loadCookiesTxt();
 
-// ========== YOUTUBE SEARCH ONLY ==========
+// ========== YOUTUBE SEARCH (youtubei.js) ==========
 let ytClient = null;
 async function getClient() {
     if (ytClient) return ytClient;
@@ -73,13 +73,44 @@ async function searchYoutube(query) {
     }
 }
 
-// ========== YT-DLP - FULL SONG, SELF-HOSTED ==========
+// ========== THESYNC SEARCH FALLBACK ==========
+async function searchThesync(query) {
+    try {
+        const { data } = await axios.get('https://apis.thesync.my.id/api/v1/search/music', {
+            params: {
+                action: 'search',
+                q: query,
+                filter: 'songs'
+            },
+            timeout: 12000,
+            headers: { 'User-Agent': 'Madara-X-MD/1.2' }
+        });
+        if (!data?.success || !Array.isArray(data.data) || !data.data.length) return null;
+        const t = data.data[0];
+        const videoId = t.videoId || t.id;
+        if (!videoId) return null;
+        return {
+            videoId,
+            title: t.title || query,
+            author: t.artist || 'Unknown',
+            duration: t.duration || 0,
+            views: t.plays || t.album || 'N/A',
+            thumbnail: t.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            url: t.youtubeUrl || `https://youtu.be/${videoId}`,
+            sourceHint: 'thesync'
+        };
+    } catch (e) {
+        console.log('[play] thesync search fail:', e.message?.slice(0, 120));
+        return null;
+    }
+}
+
+// ========== YT-DLP - FULL SONG ==========
 async function fromYtDlp(video) {
     const outPath = path.join('/tmp', `${video.videoId}.mp3`);
     try {
         if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
 
-        // Find yt-dlp binary: ./yt-dlp or system yt-dlp
         const bin = fs.existsSync(path.join(process.cwd(), 'yt-dlp')) ? './yt-dlp' : 'yt-dlp';
 
         const args = [
@@ -91,7 +122,6 @@ async function fromYtDlp(video) {
             '-o', outPath,
             `https://youtu.be/${video.videoId}`
         ];
-        // Add cookies only if file exists
         if (fs.existsSync(path.join(process.cwd(), 'cookies.txt'))) {
             args.splice(6, 0, '--cookies', 'cookies.txt');
         }
@@ -109,7 +139,7 @@ async function fromYtDlp(video) {
 
         console.log('[play] yt-dlp success:', (buffer.length / 1024 / 1024).toFixed(2) + 'MB');
         return {
-            source: 'youtube-yt-dlp',
+            source: video.sourceHint === 'thesync' ? 'youtube-thesync+yt-dlp' : 'youtube-yt-dlp',
             title: video.title, author: video.author,
             duration: video.duration, views: video.views,
             thumbnail: video.thumbnail, url: video.url,
@@ -162,12 +192,23 @@ async function fromItunes(query) {
 
 // ========== MAIN ==========
 async function getAudio(query) {
-    const video = await searchYoutube(query);
+    // 1. primary search
+    let video = await searchYoutube(query);
+
+    // 2. thesync fallback search
+    if (!video) {
+        console.log('[play] falling to thesync search');
+        video = await searchThesync(query);
+    }
+
+    // 3. full download via yt-dlp + cookies
     if (video) {
         const full = await fromYtDlp(video);
         if (full) return full;
         console.log('[play] yt-dlp failed, falling to preview');
     }
+
+    // 4. short previews
     return (await fromDeezer(query)) || (await fromItunes(query)) || null;
 }
 
@@ -208,7 +249,7 @@ async function execute(sock, msg, args) {
 ┃✰│𝒔ᴏᴜʀᴄᴇ: ${result.source}${isPreview ? ' (30s)' : ''}
 ┃✰│𝒔ᴛᴀᴛᴜ𝒔: ✅ ᴅᴏɴᴇ
 ┃✰│──────────●●►
-┃✰│   ▎▍▌▌▉▏▎▌▉▐▏▌▎
+┃✰│   ▎0▌▌▉▏▎▌▉▐▏▌▎
 ┃✰│   ©𝐌𝐀𝐃𝐀𝐑𝐀 𝐗-𝐌𝐃
 ╰──────────────────
 > *© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ☆ᴍᴀᴅᴀʀᴀ ɪɴᴄᴏʀᴘᴏʀᴀᴛɪᴏɴ.*`;
