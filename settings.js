@@ -31,7 +31,7 @@ const settings = {
     // Channel
     channelLink:     process.env.CHANNEL_LINK      || 'https://whatsapp.com/channel/0029Vb88OB4545unOuID4H0Q',
     newsletterJid:   process.env.NEWSLETTER_JID    || '120363424626346173@newsletter',
-    channelName:     '☆ᴍᴀᴅᴀʀᴀ x-ᴍᴅ | ɪɴᴄ.',
+    channelName:     '☆ᴍᴀᴅᴀʀᴀ ɪɴᴄᴏʀᴘᴏʀᴀᴛɪᴏɴ.',
 
     // Telegram bridge — channel/group links shown as buttons on every menu
     tgChannel1Url:   process.env.TG_CHANNEL_1_URL  || 'https://t.me/madaraxinc',
