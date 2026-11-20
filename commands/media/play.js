@@ -35,7 +35,7 @@ function loadCookiesTxt() {
 }
 const COOKIE_STRING = process.env.YT_COOKIES || loadCookiesTxt();
 
-// ========== YOUTUBE CLIENT (for search only) ==========
+// ========== YOUTUBE CLIENT (search only) ==========
 let ytClient = null;
 async function getClient() {
     if (ytClient) return ytClient;
@@ -70,46 +70,108 @@ async function searchYoutube(query) {
     }
 }
 
-// ========== EXTERNAL YT MP3 - FULL SONG ==========
+// ========== HELPER: download buffer from url ==========
+async function downloadBuffer(url) {
+    const res = await axios.get(url, {
+        responseType: 'arraybuffer',
+        timeout: 90000,
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+    });
+    if (!res.data?.length) return null;
+    return Buffer.from(res.data);
+}
+
+// ========== 1. COBALT (.tools) - most stable ==========
+async function fromCobalt(video) {
+    try {
+        const { data } = await axios.post('https://api.cobalt.tools/api/json', {
+            url: `https://youtu.be/${video.videoId}`,
+            isAudioOnly: true,
+            aFormat: 'mp3',
+            filenamePattern: 'basic'
+        }, {
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            timeout: 30000
+        });
+        const dl = data?.url;
+        if (!dl) { console.log('[play] Cobalt no link'); return null; }
+        const buf = await downloadBuffer(dl);
+        if (!buf) return null;
+        console.log('[play] Cobalt success');
+        return makeResult(video, buf, 'youtube-api');
+    } catch (e) {
+        console.log('[play] Cobalt fail:', e.message?.slice(0, 90));
+        return null;
+    }
+}
+
+function makeResult(video, buf, source) {
+    return {
+        source,
+        title: video.title,
+        author: video.author,
+        duration: video.duration,
+        views: video.views,
+        thumbnail: video.thumbnail,
+        url: video.url,
+        buffer: buf,
+        mimetype: 'audio/mpeg',
+        isAudio: true
+    };
+}
+
+// ========== 2. GENERIC YTMP3 APIS - .com / .app / .xyz / .io / .net / .id ==========
 async function fromExternalYT(video) {
     const ytUrl = `https://youtu.be/${video.videoId}`;
+    const enc = encodeURIComponent(ytUrl);
+
     const apis = [
-        `https://api.davidcyriltech.my.id/download/ytmp3?url=${encodeURIComponent(ytUrl)}`,
-        `https://api.vreden.my.id/api/ytmp3?url=${encodeURIComponent(ytUrl)}`,
-        `https://api.davidcyriltech.my.id/youtube/mp3?url=${encodeURIComponent(ytUrl)}`
+        // .com / .app / .xyz / .io / .net - try these first if .my.id is blocked
+        `https://api.vevioz.com/api/button/mp3/${video.videoId}`,
+        `https://api.y2mate.com/ytmp3?url=${enc}`,
+        `https://api.ytmp3.app/api/download?url=${enc}`,
+        `https://api.ytmp3.xyz/api/download?url=${enc}`,
+        `https://api.savefrom.net/api/ytmp3?url=${enc}`,
+        `https://api.cobalt.tools/api/json`, // handled separately, skip here
+        // .id / .vip / .web.id - backup
+        `https://api.giftedtech.web.id/api/download/ytmp3?apikey=gifted&url=${enc}`,
+        `https://api.siputzx.my.id/api/dl/youtube/mp3?url=${enc}`,
+        `https://api.ryzendesu.vip/api/downloader/ytmp3?url=${enc}`,
+        `https://api.princetech.my.id/api/download/ytmp3?url=${enc}`,
+        `https://api.zenzxz.my.id/api/downloader/ytmp3?url=${enc}`,
+        `https://api.davidcyriltech.my.id/download/ytmp3?url=${enc}`,
+        `https://api.vreden.my.id/api/ytmp3?url=${enc}`,
     ];
+
     for (const apiUrl of apis) {
+        if (apiUrl.includes('cobalt')) continue;
         try {
-            const { data } = await axios.get(apiUrl, { timeout: 30000 });
+            const { data } = await axios.get(apiUrl, {
+                timeout: 30000,
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
             const r = data?.result || data?.data || data;
-            const dl = r?.download_url || r?.downloadUrl || r?.dl || r?.url || r?.link;
-            if (!dl) {
-                console.log('[play] External API no link:', apiUrl.split('?')[0]);
+            // different APIs return different shapes
+            let dl = r?.download_url || r?.downloadUrl || r?.download || r?.dl || r?.url || r?.link || r?.audio || r?.mp3;
+            // vevioz / some return { link: { url } }
+            if (!dl && r?.link?.url) dl = r.link.url;
+            if (!dl || typeof dl !== 'string' || !dl.startsWith('http')) {
+                console.log('[play] External no link:', apiUrl.split('/')[2]);
                 continue;
             }
-            const audio = await axios.get(dl, { responseType: 'arraybuffer', timeout: 90000 });
-            if (!audio.data?.length) continue;
-            return {
-                source: 'youtube-api',
-                title: video.title,
-                author: video.author,
-                duration: video.duration,
-                views: video.views,
-                thumbnail: video.thumbnail,
-                url: video.url,
-                buffer: Buffer.from(audio.data),
-                mimetype: 'audio/mpeg',
-                isAudio: true
-            };
+            const buf = await downloadBuffer(dl);
+            if (!buf) continue;
+            console.log('[play] External success:', apiUrl.split('/')[2]);
+            return makeResult(video, buf, 'youtube-api');
         } catch (e) {
-            console.log('[play] External API fail:', e.message?.slice(0, 100));
+            console.log('[play] External fail:', apiUrl.split('/')[2], e.message?.slice(0, 80));
             continue;
         }
     }
     return null;
 }
 
-// ========== DEEZER (30s preview) ==========
+// ========== 3. DEEZER (30s preview) ==========
 async function fromDeezer(query) {
     try {
         const { data } = await axios.get('https://api.deezer.com/search', {
@@ -117,17 +179,18 @@ async function fromDeezer(query) {
         });
         const t = data?.data?.[0];
         if (!t?.preview) return null;
-        const audio = await axios.get(t.preview, { responseType: 'arraybuffer', timeout: 20000 });
+        const buf = await downloadBuffer(t.preview);
+        if (!buf) return null;
         return {
             source: 'Deezer/iTunes Preview',
             title: t.title, author: t.artist?.name, duration: t.duration,
             views: 'N/A', thumbnail: t.album?.cover_xl, url: t.link,
-            buffer: Buffer.from(audio.data), mimetype: 'audio/mpeg', isAudio: true
+            buffer: buf, mimetype: 'audio/mpeg', isAudio: true
         };
     } catch { return null; }
 }
 
-// ========== iTUNES (30s preview) ==========
+// ========== 4. iTUNES (30s preview) ==========
 async function fromItunes(query) {
     try {
         const { data } = await axios.get('https://itunes.apple.com/search', {
@@ -135,26 +198,60 @@ async function fromItunes(query) {
         });
         const t = data?.results?.[0];
         if (!t?.previewUrl) return null;
-        const audio = await axios.get(t.previewUrl, { responseType: 'arraybuffer', timeout: 20000 });
+        const buf = await downloadBuffer(t.previewUrl);
+        if (!buf) return null;
         return {
             source: 'Deezer/iTunes Preview',
             title: t.trackName, author: t.artistName,
             duration: Math.floor(t.trackTimeMillis / 1000),
             views: 'N/A', thumbnail: t.artworkUrl100?.replace('100x100', '600x600'),
-            url: t.trackViewUrl, buffer: Buffer.from(audio.data),
+            url: t.trackViewUrl, buffer: buf,
             mimetype: 'audio/mpeg', isAudio: true
         };
     } catch { return null; }
 }
 
-// ========== MAIN ==========
+// ========== 5. JIOSAAVN (.com) - full song backup ==========
+async function fromSaavn(query) {
+    try {
+        const { data } = await axios.get('https://saavn.dev/api/search/songs', {
+            params: { query }, timeout: 15000
+        });
+        const t = data?.data?.results?.[0];
+        if (!t) return null;
+        const dl = t.downloadUrl?.find(x => x.quality === '320kbps')?.url || t.downloadUrl?.[0]?.url;
+        if (!dl) return null;
+        const buf = await downloadBuffer(dl);
+        if (!buf) return null;
+        return {
+            source: 'Saavn',
+            title: t.name, author: t.artists?.primary?.map(a => a.name).join(', ') || 'Unknown',
+            duration: t.duration, views: 'N/A',
+            thumbnail: t.image?.[2]?.url, url: t.url,
+            buffer: buf, mimetype: 'audio/mpeg', isAudio: true
+        };
+    } catch (e) {
+        console.log('[play] Saavn fail:', e.message?.slice(0, 80));
+        return null;
+    }
+}
+
+// ========== MAIN ORDER ==========
 async function getAudio(query) {
     const video = await searchYoutube(query);
     if (video) {
+        // 1. Cobalt (.tools) - most stable
+        const c = await fromCobalt(video);
+        if (c) return c;
+        // 2. All other YTMP3 APIs (.com/.app/.xyz/.io/.net/.id)
         const full = await fromExternalYT(video);
         if (full) return full;
-        console.log('[play] External API all failed, falling to preview');
+        console.log('[play] All YT APIs failed, falling to preview/full backup');
     }
+    // 3. Saavn full song
+    const saavn = await fromSaavn(query);
+    if (saavn) return saavn;
+    // 4. Last resort 30s preview
     return (await fromDeezer(query)) || (await fromItunes(query)) || null;
 }
 
