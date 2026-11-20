@@ -36,7 +36,7 @@ async function render(sock, msg, args, skinId, ctx) {
         "\n╭═══〘 𝑴𝑨𝑫𝑨𝑹𝑨 𝑿-𝑴𝑫 〙═⊷❍\n" +
         "┃✰│𝙽𝚊𝚖𝚎: ᴍᴀᴅᴀʀᴀ x-ᴍᴅ\n" +
         "┃✰│𝚃𝚘ᴛᴀʟ: " + total + " ғᴇᴀᴛᴜʀᴇs\n" +
-        "┃✰│ᴠᴇʀꜱɪᴏɴ: v" + (s.version || '1.0')\n" +
+        "┃✰│ᴠᴇʀꜱɪᴏɴ: v" + (s.version || '1.0') + "\n" +
         "┃✰│ᴏᴡɴᴇʀ: *" + (s.ownerName || 'Madara') + "*\n" +
         "┃✰│ᴘʀᴇꜰɪx: *" + prefix + "*\n" +
         "┃✰│ᴜᴘᴛɪᴍᴇ: " + uptime + "\n" +
@@ -56,8 +56,7 @@ async function render(sock, msg, args, skinId, ctx) {
         buttons: [
             { id: "madara_cat_system", text: "⚙️ SYSTEM" },
             { id: "madara_cat_group", text: "👥 GROUP" },
-            // Opens a random menu skin from the design pool
-            { id: "madara_menu_random", text: "📂 MADARA MENU" }
+            { id: prefix + "menu", text: "📂 MADARA MENU" }
         ],
         footer: "© Powered by " + (s.botName || 'MADARA X-MD')
     }, { quoted: msg });
