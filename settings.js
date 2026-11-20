@@ -10,7 +10,7 @@ const settings = {
     // Custom code used by the Telegram/standalone pairing flow.
     // The web pairing API intentionally uses WhatsApp's normal code.
     pairingCode:     process.env.PAIRING_CODE      || 'MADARAMD',
-    version:         '1.3.0 𝙱𝙴𝚃𝙰',
+    version:         '1.4.0 𝙱𝙴𝚃𝙰',
     prefix:          process.env.PREFIX            || '.',
     prefixes:        (process.env.PREFIXES || '.,!,#,/').split(','),
     noPrefixMode:    process.env.NO_PREFIX_MODE === 'true' || false,
