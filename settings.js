@@ -64,7 +64,7 @@ const settings = {
     },
 
     // Branding
-    footer:          `\n> *© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴍᴀᴅᴀʀᴀ x-ᴍᴅ | ɪɴᴄ.*`,
+    footer:          `\n> *© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ☆ᴍᴀᴅᴀʀᴀ ɪɴᴄᴏʀᴘᴏʀᴀᴛɪᴏɴ.*`,
     get FOOTER()     { return this.footer; },
 
     // Madara Uchiha quote footers — menu/alive/welcome/goodbye each pull a
