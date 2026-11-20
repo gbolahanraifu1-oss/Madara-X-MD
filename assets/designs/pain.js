@@ -36,7 +36,7 @@ async function render(sock, msg, args, skinId, ctx) {
         "\n╭═══〘 𝑴𝑨𝑫𝑨𝑹𝑨 𝑿-𝑴𝑫 〙═⊷❍\n" +
         "┃✰│𝙽𝚊𝚖𝚎: ᴍᴀᴅᴀʀᴀ x-ᴍᴅ\n" +
         "┃✰│𝚃𝚘ᴛᴀʟ: " + total + " ғᴇᴀᴛᴜʀᴇs\n" +
-        "┃✰│ᴠᴇʀꜱɪᴏɴ: v" + (s.version || '1.0') + " ʙᴇᴛᴀ\n" +
+        "┃✰│ᴠᴇʀꜱɪᴏɴ: v" + (s.version || '1.0')\n" +
         "┃✰│ᴏᴡɴᴇʀ: *" + (s.ownerName || 'Madara') + "*\n" +
         "┃✰│ᴘʀᴇꜰɪx: *" + prefix + "*\n" +
         "┃✰│ᴜᴘᴛɪᴍᴇ: " + uptime + "\n" +
