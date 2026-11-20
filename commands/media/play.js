@@ -53,7 +53,6 @@ async function searchYoutube(query) {
         const search = await client.search(query, { type: 'video' });
         const video = search.results?.[0];
         if (!video) return null;
-        // get extra info for title / views
         let info = null;
         try { info = await client.getInfo(video.id); } catch {}
         return {
@@ -150,15 +149,12 @@ async function fromItunes(query) {
 
 // ========== MAIN ==========
 async function getAudio(query) {
-    // 1. Search YouTube for correct song
     const video = await searchYoutube(query);
     if (video) {
-        // 2. Download full via external API
         const full = await fromExternalYT(video);
         if (full) return full;
         console.log('[play] External API all failed, falling to preview');
     }
-    // 3. Fallback 30s preview
     return (await fromDeezer(query)) || (await fromItunes(query)) || null;
 }
 
@@ -176,26 +172,20 @@ function formatViews(v) {
 }
 
 // ========== COMMAND ==========
-module.exports = {
-    name: 'play',
-    alias: ['song', 'music', 'yt'],
-    desc: 'Play music',
-    category: 'media',
-    async run(sock, msg, args) {
-        const from = msg.key.remoteJid;
-        const query = args.join(' ').trim();
-        if (!query) return sock.sendMessage(from, { text: '❌ Usage: .play <song name>' }, { quoted: msg });
+async function execute(sock, msg, args) {
+    const from = msg.key.remoteJid;
+    const query = args.join(' ').trim();
+    if (!query) return sock.sendMessage(from, { text: '❌ Usage: .play <song name>' }, { quoted: msg });
 
-        // react / loading
-        try { await sock.sendMessage(from, { react: { text: '🎵', key: msg.key } }); } catch {}
+    try { await sock.sendMessage(from, { react: { text: '🎵', key: msg.key } }); } catch {}
 
-        const result = await getAudio(query);
-        if (!result) {
-            return sock.sendMessage(from, { text: '❌ No audio found for: ' + query }, { quoted: msg });
-        }
+    const result = await getAudio(query);
+    if (!result) {
+        return sock.sendMessage(from, { text: '❌ No audio found for: ' + query }, { quoted: msg });
+    }
 
-        const isPreview = result.source.includes('Preview');
-        const caption =
+    const isPreview = result.source.includes('Preview');
+    const caption =
 `╭═══〘 𝑴𝑨𝑫𝑨𝑹𝑨 𝑿-𝑴𝑫 〙═══⊷❍
 ┃✰│━━━❮❮ 🎵 ᴘʟᴀʏ ❯❯━━━━━
 ┃✰│ᴛɪᴛʟᴇ: ${result.title}
@@ -210,11 +200,19 @@ module.exports = {
 ╰──────────────────
 > *© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ☆ᴍᴀᴅᴀʀᴀ ɪɴᴄᴏʀᴘᴏʀᴀᴛɪᴏɴ.*`;
 
-        await sock.sendMessage(from, {
-            audio: result.buffer,
-            mimetype: result.mimetype || 'audio/mpeg',
-            ptt: false,
-            caption: caption
-        }, { quoted: msg });
-    }
+    await sock.sendMessage(from, {
+        audio: result.buffer,
+        mimetype: result.mimetype || 'audio/mpeg',
+        ptt: false,
+        caption: caption
+    }, { quoted: msg });
+}
+
+module.exports = {
+    name: 'play',
+    alias: ['song', 'music', 'yt'],
+    desc: 'Play music',
+    category: 'media',
+    execute,
+    run: execute
 };
