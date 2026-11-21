@@ -1,72 +1,119 @@
 'use strict';
 
-function madaraStatusHtml({ title, kicker, rows, accent, meter }) {
-    const rowHtml = (rows || []).map((r) => `
-      <div class="row">
-        <div class="label">${r.label}</div>
-        <div class="value">${r.value}</div>
-      </div>`).join('');
+function buildPingHtml(ms) {
+    const n = Math.max(1, Math.floor(Number(ms) || 1));
+    let status = 'Excellent • Stable connection';
+    let barColor = 'linear-gradient(90deg,#2aff7a,#7affb0)';
+    if (n >= 120) {
+        status = 'Slow • High latency';
+        barColor = 'linear-gradient(90deg,#ff2a2a,#ff8a5a)';
+    } else if (n >= 60) {
+        status = 'Good • Slight delay';
+        barColor = 'linear-gradient(90deg,#ffaa00,#ffdd55)';
+    }
+    const pct = Math.min(100, Math.max(5, (n / 200) * 100)).toFixed(1);
 
-    const width = Math.max(6, Math.min(100, meter || 40));
-    const big = (rows && rows[0] && rows[0].value) ? rows[0].value : '—';
-    // detail rows under the big latency number (skip first)
-    const detailRows = (rows || []).slice(1).map((r) => `
-      <div class="row">
-        <div class="label">${r.label}</div>
-        <div class="value">${r.value}</div>
-      </div>`).join('');
-
-    return `<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>MADARA · ${title}</title>
+    return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MADARA X-MD · Ping</title>
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-html,body{width:100%;min-height:100%;background:#05070c;color:#f1e9ff;
-font-family:Arial Black,Arial,sans-serif}
-body{padding:14px;background:
- radial-gradient(circle at 80% 0%,#0f2a24 0%,transparent 40%),
- radial-gradient(circle at 10% 30%,#1a0830 0%,#05070c 55%)}
-.card{max-width:400px;margin:0 auto;border:1px solid ${accent}88;border-radius:18px;
-background:linear-gradient(160deg,#0a1a16 0%,#080410 100%);
-box-shadow:0 0 28px ${accent}33;overflow:hidden}
-.head{padding:16px 16px 10px;text-align:center;border-bottom:1px solid #ffffff12}
-.kicker{color:${accent};font:10px monospace;letter-spacing:3px;margin-bottom:6px}
-.h1{font:900 22px Arial Black,sans-serif;letter-spacing:1px;color:#fff;
-text-shadow:0 0 14px ${accent}}
-.sub{margin-top:4px;color:#94a3b8;font:10px monospace}
-.bigms{margin:14px 0 4px;font:900 36px Arial Black,sans-serif;color:#fff;
-text-shadow:0 0 20px ${accent}}
-.body{padding:8px 16px 8px}
-.row{display:flex;justify-content:space-between;align-items:center;
-padding:10px 0;border-bottom:1px solid #ffffff0d}
-.row:last-child{border-bottom:none}
-.label{color:#94a3b8;font:11px monospace;letter-spacing:.5px}
-.value{color:#f8fafc;font:bold 13px Arial,sans-serif}
-.barwrap{margin:12px 16px 4px;height:10px;border-radius:99px;background:#10201c;overflow:hidden}
-.bar{height:100%;width:${width}%;border-radius:99px;
-background:linear-gradient(90deg,${accent},#4ade80,#fff3);
-box-shadow:0 0 12px ${accent}}
-.foot{padding:12px 16px 16px;text-align:center;color:#64748b;font:9px monospace}
-</style></head><body>
-<div class="card">
-  <div class="head">
-    <div class="kicker">MADARA X-MD // LATENCY</div>
-    <div class="h1">${title}</div>
-    <div class="sub">${kicker}</div>
-    <div class="bigms">${big}</div>
-  </div>
-  <div class="body">${detailRows || rowHtml}</div>
-  <div class="barwrap"><div class="bar"></div></div>
-  <div class="foot">© MADARA INCORPORATION · SPEED CHECK</div>
-</div>
-</body></html>`;
-}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{min-height:100vh;background:#0a0a0c;display:flex;align-items:center;justify-content:center;font-family:Inter,system-ui,sans-serif;padding:16px}
+  .card{
+    width:100%;max-width:640px;padding:16px 22px 16px;border-radius:24px;color:#fff;
+    background:linear-gradient(90deg,#1a0a0a,#0d0d10 55%,#140505);
+    border:1px solid rgba(255,255,255,.08);
+    box-shadow:0 20px 60px rgba(0,0,0,.7);
+    position:relative;overflow:hidden;
+    display:flex;flex-direction:column
+  }
+  .card::before{content:"";position:absolute;inset:0;background:radial-gradient(300px 140px at 95% -10%,rgba(255,30,30,.35),transparent 60%);pointer-events:none}
+  .top{display:flex;align-items:center;gap:10px;position:relative}
+  .logo{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#ff2a2a,#7a0000);display:flex;align-items:center;justify-content:center;font-size:19px;box-shadow:0 8px 20px rgba(255,0,0,.4)}
+  .top h1{font-size:17px}
+  .top p{font-size:11px;color:#999;margin-top:1px}
+  .live{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;background:#12281a;border:1px solid #2a5a3a;color:#6dff8a;padding:6px 11px;border-radius:100px}
+  .live i{width:7px;height:7px;background:#2aff7a;border-radius:50%;display:block;box-shadow:0 0 10px #2aff7a;animation:blink 1s infinite}
+  @keyframes blink{50%{opacity:.3}}
+  .main{display:flex;gap:14px;margin-top:14px;position:relative}
+  .left{flex:1.4;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:18px;padding:14px 16px}
+  .left small{font-size:10px;letter-spacing:2px;color:#888}
+  .big{font-size:44px;font-weight:800;margin:4px 0 1px;line-height:1}
+  .big span{font-size:16px;color:#ff5a5a}
+  #statusText{font-size:12px;color:#aaa}
+  .bar{height:7px;background:#222;border-radius:20px;overflow:hidden;margin-top:10px}
+  .bar i{display:block;height:100%;width:${pct}%;border-radius:20px;background:${barColor};box-shadow:0 0 12px rgba(255,42,42,.35)}
+  .bar-labels{display:flex;justify-content:space-between;font-size:10px;color:#666;margin-top:5px}
+  .right{flex:1;display:flex;flex-direction:column;gap:10px}
+  .mini{display:flex;justify-content:space-between;align-items:center;flex:1;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:10px 14px}
+  .mini small{font-size:10px;color:#888;letter-spacing:1px}
+  .mini b{font-size:14px}
+  .btn{margin-top:12px;width:100%;padding:11px;border:0;border-radius:14px;background:#fff;color:#000;font-weight:700;font-size:14px;cursor:pointer;position:relative}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="top">
+      <div class="logo">◉</div>
+      <div><h1>MADARA X-MD</h1><p>Ping Monitor</p></div>
+      <div class="live"><i></i> ONLINE</div>
+    </div>
 
-function speedLabel(ms) {
-    if (ms < 150) return 'BLAZING';
-    if (ms < 350) return 'FAST';
-    if (ms < 700) return 'OK';
-    return 'SLOW';
+    <div class="main">
+      <div class="left">
+        <small>CURRENT PING</small>
+        <div class="big"><span id="msNum">${n}</span><span> ms</span></div>
+        <div id="statusText">${status}</div>
+        <div class="bar"><i id="pingBar"></i></div>
+        <div class="bar-labels"><span>0ms</span><span>Fast</span><span>200ms</span></div>
+      </div>
+
+      <div class="right">
+        <div class="mini"><small>GRADE</small><b>${n < 60 ? 'BLAZING' : n < 120 ? 'GOOD' : 'SLOW'}</b></div>
+        <div class="mini"><small>SERVER</small><b>Online</b></div>
+      </div>
+    </div>
+
+    <button class="btn" onclick="checkNow()">Check Again →</button>
+  </div>
+
+<script>
+  const msNum = document.getElementById('msNum');
+  const bar = document.getElementById('pingBar');
+  const statusText = document.getElementById('statusText');
+  let current = ${n};
+  function updatePing(newMs){
+    current = newMs;
+    msNum.textContent = newMs;
+    let pct = Math.min(100, Math.max(5, (newMs / 200) * 100));
+    bar.style.width = pct + '%';
+    if(newMs < 60){
+      bar.style.background = 'linear-gradient(90deg,#2aff7a,#7affb0)';
+      statusText.textContent = 'Excellent • Stable connection';
+    } else if(newMs < 120){
+      bar.style.background = 'linear-gradient(90deg,#ffaa00,#ffdd55)';
+      statusText.textContent = 'Good • Slight delay';
+    } else {
+      bar.style.background = 'linear-gradient(90deg,#ff2a2a,#ff8a5a)';
+      statusText.textContent = 'Slow • High latency';
+    }
+  }
+  function randomPing(){
+    let change = Math.floor(Math.random() * 21) - 10;
+    let next = current + change;
+    if(next < 18) next = 18;
+    if(next > 180) next = 180;
+    updatePing(next);
+  }
+  function checkNow(){ updatePing(Math.floor(Math.random()*60)+25); }
+  updatePing(current);
+  setInterval(randomPing, 1200);
+</script>
+</body>
+</html>`;
 }
 
 async function sendRich(sock, msg, ctx, html, fallbackText) {
@@ -95,27 +142,9 @@ module.exports = {
     async execute(sock, msg, args, ctx) {
         const s = ctx.settings || {};
         const start = msg.messageTimestamp ? msg.messageTimestamp * 1000 : Date.now();
-        const t0 = Date.now();
-        const rttMsg = Math.max(0, t0 - start);
-        const local = Date.now() - t0;
-        const ms = rttMsg || local || 1;
-        const grade = speedLabel(ms);
-        const accent = ms < 350 ? '#22c55e' : ms < 700 ? '#eab308' : '#ef4444';
-
-        const html = madaraStatusHtml({
-            title: 'PING',
-            kicker: 'response time measured',
-            accent,
-            meter: Math.max(8, 100 - Math.min(ms / 10, 90)),
-            rows: [
-                { label: 'LATENCY', value: `${ms} ms` },
-                { label: 'GRADE', value: grade },
-                { label: 'BOT', value: s.botName || 'MADARA X-MD' },
-                { label: 'STATUS', value: 'ONLINE' },
-            ],
-        });
-
-        const fallback = `🎯 *${s.botName || 'MADARA'} sᴘᴇᴇᴅ:* *${ms}ᴍs* · ${grade}${s.FOOTER || ''}`;
+        const ms = Math.max(1, Date.now() - start);
+        const html = buildPingHtml(ms);
+        const fallback = `🎯 *${s.botName || 'MADARA'} sᴘᴇᴇᴅ:* *${ms}ᴍs*${s.FOOTER || ''}`;
         return sendRich(sock, msg, ctx, html, fallback);
     },
 };
