@@ -137,10 +137,6 @@ async function prepareMenuMedia(sock, senderId) {
     return null;
 }
 
-/**
- * Build single_select sections from category catalog.
- * Row ids stay madara_cat_<key> so handler still opens categories.
- */
 function buildCategorySections(s) {
     var categoryRows = Object.entries(getMenuCategoryCatalog()).map(function (entry) {
         var key = entry[0];
@@ -187,7 +183,6 @@ async function sendDefaultInteractiveMenu(sock, msg, ctx, str, headerMedia, sect
                 imageMessage: (headerMedia && headerMedia.imageMessage) || undefined,
                 videoMessage: (headerMedia && headerMedia.videoMessage) || undefined
             }),
-            // ONLY single_select — no quick_reply, no mixed
             nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
                 buttons: [
                     {
@@ -212,7 +207,6 @@ async function sendDefaultInteractiveMenu(sock, msg, ctx, str, headerMedia, sect
                 attrs: { type: 'native_flow', v: '1' },
                 content: [{
                     tag: 'native_flow',
-                    // single_select only — not "mixed"
                     attrs: { v: '1', name: 'single_select' }
                 }]
             }]
@@ -220,7 +214,7 @@ async function sendDefaultInteractiveMenu(sock, msg, ctx, str, headerMedia, sect
     });
 }
 
-/** Plain fallback if interactive is rejected by WA */
+/** Image/video/text fallback — always delivers a visible menu */
 async function sendDefaultFallbackMenu(sock, msg, ctx, str) {
     var s = ctx.settings;
     var sections = buildCategorySections(s);
@@ -238,9 +232,19 @@ async function sendDefaultFallbackMenu(sock, msg, ctx, str) {
 
     var body = str + '\n\n' + menuBox('📂', 'ᴄᴀᴛᴇɢᴏʀɪᴇs', lines) + (s.FOOTER || '');
 
-    if (fs.existsSync(MENU_IMG)) {
+    // Prefer banner image
+    var banner = null;
+    if (fs.existsSync(MENU_IMG)) banner = MENU_IMG;
+    else {
+        try {
+            var pick = getRandomBanner(ctx.sender);
+            if (pick && fs.existsSync(pick)) banner = pick;
+        } catch (_) {}
+    }
+
+    if (banner) {
         await sock.sendMessage(ctx.from, {
-            image: fs.readFileSync(MENU_IMG),
+            image: fs.readFileSync(banner),
             caption: body
         }, { quoted: msg });
         return;
@@ -256,6 +260,19 @@ async function sendDefaultFallbackMenu(sock, msg, ctx, str) {
     await sock.sendMessage(ctx.from, { text: body }, { quoted: msg });
 }
 
+async function maybeSendMenuAudio(sock, from) {
+    if (!fs.existsSync(MENU_AUDIO)) return;
+    try {
+        await sock.sendMessage(from, {
+            audio: fs.readFileSync(MENU_AUDIO),
+            mimetype: 'audio/mpeg',
+            ptt: false
+        });
+    } catch (e) {
+        console.log('[menu] audio send failed:', e.message);
+    }
+}
+
 async function execute(sock, msg, args, ctx) {
     // Design engine (abyss, pain, pack skins, …)
     try {
@@ -267,6 +284,8 @@ async function execute(sock, msg, args, ctx) {
         if (skin && skin !== 'default') {
             try {
                 await menuEngine.render(sock, msg, args, skin, ctx);
+                // skin handled full menu — still optional audio
+                await maybeSendMenuAudio(sock, ctx.from);
                 return;
             } catch (e) {
                 console.log('[MENU] design render failed → fallback:', e.message);
@@ -296,28 +315,31 @@ async function execute(sock, msg, args, ctx) {
         '┃✰│ᴅᴀᴛᴇ: ' + date + '\n' +
         '┃✰│ᴛɪᴍᴇ: ' + time + '\n' +
         '╰──────────────────\n\n' +
-        '*Q̲ᴜɪᴄᴋ:* ' + prefix + 'ʙᴏᴛᴍᴇɴᴜ | ' + prefix + 'ɢʀᴏᴜᴘᴍᴇɴᴜ | ' + prefix + 'ᴅʟᴍᴇɴᴜ';
+        '*Q̲ᴜɪᴄᴋ:* ' + prefix + 'ʙᴏᴛᴍᴇɴᴜ | ' + prefix + 'ɢʀᴏᴜᴘᴍᴇɴᴜ | ' + prefix + 'ᴅʟᴍᴇɴᴜ | ' + prefix + 'ɢᴀᴍᴇs';
 
     var headerMedia = await prepareMenuMedia(sock, ctx.sender);
     var sections = buildCategorySections(s);
 
+    var menuSent = false;
     try {
         await sendDefaultInteractiveMenu(sock, msg, ctx, str, headerMedia, sections);
+        menuSent = true;
     } catch (e) {
-        console.error('[menu] interactive single_select failed → text fallback:', e.message);
-        await sendDefaultFallbackMenu(sock, msg, ctx, str);
+        console.error('[menu] interactive single_select failed → media/text fallback:', e.message);
+        try {
+            await sendDefaultFallbackMenu(sock, msg, ctx, str);
+            menuSent = true;
+        } catch (e2) {
+            console.error('[menu] fallback also failed:', e2.message);
+            // last resort plain text
+            await sock.sendMessage(ctx.from, { text: str + (s.FOOTER || '') }, { quoted: msg });
+            menuSent = true;
+        }
     }
 
-    if (fs.existsSync(MENU_AUDIO)) {
-        try {
-            await sock.sendMessage(ctx.from, {
-                audio: fs.readFileSync(MENU_AUDIO),
-                mimetype: 'audio/mpeg',
-                ptt: false
-            });
-        } catch (e) {
-            console.log('[menu] audio send failed:', e.message);
-        }
+    // Audio only after a visible menu actually went out
+    if (menuSent) {
+        await maybeSendMenuAudio(sock, ctx.from);
     }
 }
 
