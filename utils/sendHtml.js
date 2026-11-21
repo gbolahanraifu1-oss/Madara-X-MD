@@ -103,3 +103,4 @@ async function sendHtmlString({ sock, jid, html, quoted }) {
 }
 
 module.exports = { sendHtml, sendHtmlString, loadHtml };
+
