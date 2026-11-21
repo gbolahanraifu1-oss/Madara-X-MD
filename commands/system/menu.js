@@ -40,6 +40,7 @@ function clockString(ms) {
 var MENU_IMG = path.join(process.cwd(), 'assets', 'menuimage.jpg');
 var MENU_VID = path.join(process.cwd(), 'assets', 'menuvideo.mp4');
 var MENU_AUDIO = path.join(process.cwd(), 'assets', 'menu_audio.mp3');
+var DEFAULT_SKIN = 'pain';
 
 function greeting() {
     var h = new Date().getHours();
@@ -214,7 +215,6 @@ async function sendDefaultInteractiveMenu(sock, msg, ctx, str, headerMedia, sect
     });
 }
 
-/** Image/video/text fallback — always delivers a visible menu */
 async function sendDefaultFallbackMenu(sock, msg, ctx, str) {
     var s = ctx.settings;
     var sections = buildCategorySections(s);
@@ -232,7 +232,6 @@ async function sendDefaultFallbackMenu(sock, msg, ctx, str) {
 
     var body = str + '\n\n' + menuBox('📂', 'ᴄᴀᴛᴇɢᴏʀɪᴇs', lines) + (s.FOOTER || '');
 
-    // Prefer banner image
     var banner = null;
     if (fs.existsSync(MENU_IMG)) banner = MENU_IMG;
     else {
@@ -274,27 +273,38 @@ async function maybeSendMenuAudio(sock, from) {
 }
 
 async function execute(sock, msg, args, ctx) {
-    // Design engine (abyss, pain, pack skins, …)
+    // ── Design engine: pain is the default skin ──
     try {
         var menuEngine = require('../../lib/menuEngine');
         var chatId = msg.chat || ctx.from;
         var senderId = (msg.key && msg.key.participant) || msg.sender || ctx.sender || chatId;
         var skin = menuEngine.getDesignIdFor(chatId, senderId);
 
-        if (skin && skin !== 'default') {
-            try {
-                await menuEngine.render(sock, msg, args, skin, ctx);
-                // skin handled full menu — still optional audio
-                await maybeSendMenuAudio(sock, ctx.from);
-                return;
-            } catch (e) {
-                console.log('[MENU] design render failed → fallback:', e.message);
+        // Force pain when unset / default
+        if (!skin || skin === 'default') skin = DEFAULT_SKIN;
+
+        try {
+            await menuEngine.render(sock, msg, args, skin, ctx);
+            await maybeSendMenuAudio(sock, ctx.from);
+            return;
+        } catch (e) {
+            console.log('[MENU] design "' + skin + '" failed → stock fallback:', e.message);
+            // If preferred skin failed and it wasn't pain, try pain once
+            if (skin !== DEFAULT_SKIN) {
+                try {
+                    await menuEngine.render(sock, msg, args, DEFAULT_SKIN, ctx);
+                    await maybeSendMenuAudio(sock, ctx.from);
+                    return;
+                } catch (e2) {
+                    console.log('[MENU] pain fallback also failed:', e2.message);
+                }
             }
         }
     } catch (e) {
         console.log('[MENU] skin outer error:', e.message);
     }
 
+    // ── Stock interactive / media fallback (only if pain + design engine dead) ──
     var s = ctx.settings;
     var prefix = s.prefix || '.';
     var name = ctx.pushName || sc(s.ownerName);
@@ -325,22 +335,18 @@ async function execute(sock, msg, args, ctx) {
         await sendDefaultInteractiveMenu(sock, msg, ctx, str, headerMedia, sections);
         menuSent = true;
     } catch (e) {
-        console.error('[menu] interactive single_select failed → media/text fallback:', e.message);
+        console.error('[menu] interactive failed → media/text fallback:', e.message);
         try {
             await sendDefaultFallbackMenu(sock, msg, ctx, str);
             menuSent = true;
         } catch (e2) {
-            console.error('[menu] fallback also failed:', e2.message);
-            // last resort plain text
+            console.error('[menu] fallback failed:', e2.message);
             await sock.sendMessage(ctx.from, { text: str + (s.FOOTER || '') }, { quoted: msg });
             menuSent = true;
         }
     }
 
-    // Audio only after a visible menu actually went out
-    if (menuSent) {
-        await maybeSendMenuAudio(sock, ctx.from);
-    }
+    if (menuSent) await maybeSendMenuAudio(sock, ctx.from);
 }
 
 module.exports = {
