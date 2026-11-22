@@ -28,9 +28,15 @@ async function render(sock, msg, args, skinId, ctx) {
         if (n > 0) total = n + '+';
     } catch (e) {}
 
-    var url = "https://wsrv.nl/?url=files.catbox.moe/2prt24.jpg&w=144&h=144&fit=cover&output=jpg&q=60";
-    var r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
-    var buf = Buffer.from(await r.arrayBuffer());
+    // The thumbnail is cosmetic: if the image host is down, still send the menu.
+    var buf;
+    try {
+        var url = "https://wsrv.nl/?url=files.catbox.moe/2prt24.jpg&w=144&h=144&fit=cover&output=jpg&q=60";
+        var r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+        if (r.ok) buf = Buffer.from(await r.arrayBuffer());
+    } catch (e) {
+        console.log('[pain] thumbnail fetch failed:', e.message);
+    }
 
     var str =
         "\n╭═══〘 𝑴𝑨𝑫𝑨𝑹𝑨 𝑿-𝑴𝑫 〙═⊷❍\n" +
@@ -56,7 +62,10 @@ async function render(sock, msg, args, skinId, ctx) {
         buttons: [
             { id: "madara_cat_system", text: "⚙️ SYSTEM" },
             { id: "madara_cat_group", text: "👥 GROUP" },
-            { id: prefix + "menu", text: "📂 MADARA MENU" }
+            // Do NOT use prefix + "menu" here: Pain is the default skin, so ".menu"
+            // just re-renders Pain and the button looks dead. madara_menu_random is
+            // handled in lib/handler.js -> lib/randomMenu.js and opens a full menu.
+            { id: "madara_menu_random", text: "📂 MADARA MENU" }
         ],
         footer: "© Powered by " + (s.botName || 'MADARA X-MD')
     }, { quoted: msg });
