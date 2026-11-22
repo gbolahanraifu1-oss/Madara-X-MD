@@ -1,87 +1,236 @@
 'use strict';
+/*
+ * MADARA X-MD — .play (full track)
+ *
+ * Pipeline:
+ *   search : yt-search → youtubei.js → thesync API → yt-dlp "ytsearch1:"
+ *   audio  : yt-dlp (self-installing, JS-runtime aware, multi-client, cookie-safe)
+ *            → optional own cobalt instance / public API → 30s preview (Deezer/iTunes)
+ *
+ * Optional env vars:
+ *   YTDLP_PATH       absolute path to a yt-dlp binary
+ *   YTDLP_PROXY      proxy for yt-dlp, e.g. http://user:pass@host:port (fixes datacenter-IP blocks)
+ *   YT_COOKIES       cookie header string ("A=1; B=2") if you don't use cookies.txt
+ *   COBALT_API_URL   your own cobalt instance (e.g. https://cobalt.yourdomain.com/)
+ *   COBALT_API_KEY   api key for that instance (if it needs one)
+ */
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const axios = require('axios');
 const { execFile } = require('child_process');
 const util = require('util');
 const execFileAsync = util.promisify(execFile);
-const { Innertube, UniversalCache } = require('youtubei.js');
 
-// ========== COOKIES ==========
-function loadCookiesTxt() {
+const ROOT = process.cwd();
+const TMP = os.tmpdir();
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+const MAX_AUDIO_BYTES = 40 * 1024 * 1024;
+const COOKIES_TXT = path.join(ROOT, 'cookies.txt');
+
+// ========== COOKIES (yt-dlp needs a Netscape file) ==========
+// Builds a throw-away Netscape cookie file in /tmp from cookies.txt (Netscape OR
+// one-line "A=1; B=2" header) or the YT_COOKIES env var. We never hand yt-dlp
+// the original file: it rewrites its cookie jar on exit and can corrupt it.
+function prepareCookieFile() {
     try {
-        const file = path.join(process.cwd(), 'cookies.txt');
-        if (!fs.existsSync(file)) {
-            console.log('[play] No cookies.txt found');
-            return '';
-        }
-        const raw = fs.readFileSync(file, 'utf8').trim();
-        if (!raw) return '';
-        // Netscape OR single-line cookie header
-        if (!raw.includes('\n') && raw.includes('=')) {
-            console.log(`[play] Loaded ${raw.split(';').length} cookies from cookies.txt`);
-            return raw;
-        }
-        const cookies = [];
-        for (const line of raw.split('\n')) {
-            const t = line.trim();
-            if (!t || t.startsWith('#')) continue;
-            const parts = t.split('\t');
-            if (parts.length >= 7) cookies.push(`${parts[5]}=${parts[6]}`);
-            else if (t.includes('=')) cookies.push(t);
-        }
-        console.log(`[play] Loaded ${cookies.length} cookies from cookies.txt`);
-        return cookies.join('; ');
-    } catch (e) {
-        console.log('[play] Cookies load fail:', e.message);
-        return '';
-    }
-}
-const COOKIE_STRING = process.env.YT_COOKIES || loadCookiesTxt();
-const HAS_COOKIE_FILE = fs.existsSync(path.join(process.cwd(), 'cookies.txt'));
+        let raw = '';
+        if (fs.existsSync(COOKIES_TXT)) raw = fs.readFileSync(COOKIES_TXT, 'utf8').replace(/\r/g, '').trim();
+        const out = path.join(TMP, 'madara_yt_cookies.txt');
 
-// ========== YOUTUBE SEARCH (youtubei.js) ==========
-let ytClient = null;
-async function getClient() {
-    if (ytClient) return ytClient;
-    ytClient = await Innertube.create({
-        cache: new UniversalCache(false),
-        generate_session_locally: true,
-        cookie: COOKIE_STRING || undefined,
-    });
-    return ytClient;
-}
+        if (raw && raw.split('\n').some(l => l.split('\t').length >= 7)) {
+            const body = /^#\s*(HTTP|Netscape)/i.test(raw) ? raw : '# Netscape HTTP Cookie File\n' + raw;
+            fs.writeFileSync(out, body + '\n');
+            return out;
+        }
 
-async function searchYoutube(query) {
-    try {
-        const client = await getClient();
-        const search = await client.search(query, { type: 'video' });
-        const video = search.results?.[0];
-        if (!video) return null;
-        let info = null;
-        try { info = await client.getInfo(video.id); } catch {}
-        return {
-            videoId: video.id,
-            title: info?.basic_info?.title || video.title?.text || video.title || query,
-            author: info?.basic_info?.author || video.author?.name || 'Unknown',
-            duration: info?.basic_info?.duration || video.duration?.seconds || 0,
-            views: info?.basic_info?.view_count || video.view_count?.text || '0',
-            thumbnail: info?.basic_info?.thumbnail?.[0]?.url || video.thumbnails?.[0]?.url || '',
-            url: `https://youtu.be/${video.id}`
-        };
+        const header = (process.env.YT_COOKIES || raw).trim();
+        if (!header.includes('=')) return null;
+        const rows = header.split(';')
+            .map(s => s.trim())
+            .filter(s => s.includes('='))
+            .map(s => {
+                const i = s.indexOf('=');
+                return `.youtube.com\tTRUE\t/\tTRUE\t2147483647\t${s.slice(0, i)}\t${s.slice(i + 1)}`;
+            });
+        if (!rows.length) return null;
+        fs.writeFileSync(out, '# Netscape HTTP Cookie File\n' + rows.join('\n') + '\n');
+        return out;
     } catch (e) {
-        console.log('[play] Youtube search fail:', e.message?.slice(0, 120));
+        console.log('[play] cookie prepare fail:', e.message);
         return null;
     }
 }
 
-// ========== THESYNC SEARCH FALLBACK ==========
+// ========== yt-dlp BINARY (find / download / update) ==========
+const UPDATE_EVERY_MS = 12 * 3600 * 1000;
+let ytdlpBin = null;
+let ytdlpInit = null;
+let ytdlpInitAt = 0;
+
+function findYtDlp() {
+    const candidates = [
+        process.env.YTDLP_PATH,
+        path.join(ROOT, 'yt-dlp'),
+        path.join(ROOT, 'node_modules', 'yt-dlp-exec', 'bin', 'yt-dlp'),
+        path.join(ROOT, 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp'),
+    ].filter(Boolean);
+    for (const c of candidates) {
+        try { if (fs.existsSync(c) && fs.statSync(c).size > 100000) return c; } catch {}
+    }
+    return null;
+}
+
+async function downloadYtDlp() {
+    if (process.platform !== 'linux') return null;
+    const asset = process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux';
+    const dest = path.join(ROOT, 'yt-dlp');
+    const { data } = await axios.get(`https://github.com/yt-dlp/yt-dlp/releases/latest/download/${asset}`, {
+        responseType: 'arraybuffer', timeout: 120000, maxRedirects: 5, headers: { 'User-Agent': UA },
+    });
+    fs.writeFileSync(dest, Buffer.from(data));
+    fs.chmodSync(dest, 0o755);
+    return dest;
+}
+
+async function ensureYtDlp() {
+    if (!ytdlpBin) {
+        ytdlpBin = findYtDlp();
+        if (!ytdlpBin) {
+            try { await execFileAsync('yt-dlp', ['--version'], { timeout: 15000 }); ytdlpBin = 'yt-dlp'; } catch {}
+        }
+        if (!ytdlpBin) {
+            try {
+                console.log('[play] yt-dlp not found, downloading latest binary…');
+                ytdlpBin = await downloadYtDlp();
+            } catch (e) {
+                console.log('[play] yt-dlp download failed:', e.message?.slice(0, 120));
+            }
+        }
+    }
+    if (ytdlpBin) {
+        // YouTube breaks old yt-dlp builds constantly — self-update (no-op if pip/system managed)
+        try {
+            const { stdout } = await execFileAsync(ytdlpBin, ['-U'], { timeout: 45000 });
+            console.log('[play] yt-dlp:', String(stdout).trim().split('\n').pop());
+        } catch (e) {
+            console.log('[play] yt-dlp update skipped:', String(e.stderr || e.message || '').trim().split('\n').pop()?.slice(0, 120));
+        }
+    }
+    return ytdlpBin;
+}
+
+function getYtDlp() {
+    if (!ytdlpInit || Date.now() - ytdlpInitAt > UPDATE_EVERY_MS) {
+        ytdlpInitAt = Date.now();
+        ytdlpInit = ensureYtDlp();
+    }
+    return ytdlpInit;
+}
+
+// ffmpeg: prefer the bundled ffmpeg-static, else system ffmpeg, else null
+let ffmpegResolved;
+async function getFfmpeg() {
+    if (ffmpegResolved !== undefined) return ffmpegResolved;
+    try {
+        const p = require('ffmpeg-static');
+        if (p && fs.existsSync(p)) return (ffmpegResolved = p);
+    } catch {}
+    try {
+        await execFileAsync('ffmpeg', ['-version'], { timeout: 10000 });
+        return (ffmpegResolved = 'ffmpeg');
+    } catch {}
+    return (ffmpegResolved = null);
+}
+
+// YouTube now needs an external JS runtime for signature/n-challenges (yt-dlp >= 2025.11.12).
+// Node is already here (engines: >=20), so hand it to yt-dlp. Very old builds don't know
+// these flags — then we retry without them.
+const JS_FLAGS = ['--js-runtimes', `node:${process.execPath}`, '--remote-components', 'ejs:github'];
+
+function runYtDlp(bin, args, timeout) {
+    return execFileAsync(bin, args, {
+        timeout,
+        maxBuffer: 50 * 1024 * 1024,
+        env: { ...process.env, PYTHONUTF8: '1' },
+    });
+}
+
+async function ytdlp(bin, args, timeout) {
+    try {
+        return await runYtDlp(bin, [...JS_FLAGS, ...args], timeout);
+    } catch (e) {
+        const err = String(e.stderr || e.message || '');
+        if (/no such option|unrecognized arguments|unknown option/i.test(err)) {
+            return runYtDlp(bin, args, timeout);
+        }
+        throw e;
+    }
+}
+
+let lastYtError = '';
+let lastHintAt = 0;
+function noteYtError(err) {
+    lastYtError = err;
+    if (/confirm you.?re not a bot|HTTP Error 403|cookies are no longer valid|PO Token/i.test(err) && Date.now() - lastHintAt > 10 * 60 * 1000) {
+        lastHintAt = Date.now();
+        console.log('[play] ⚠️ YouTube is blocking this server/cookies. Re-export a FRESH cookies.txt (incognito window, then close it) or set YTDLP_PROXY.');
+    }
+}
+
+// ========== SEARCH ==========
+async function searchYtSearch(query) {
+    try {
+        const yts = require('yt-search');
+        const r = await yts(query);
+        const v = r?.videos?.[0];
+        if (!v?.videoId) return null;
+        return {
+            videoId: v.videoId,
+            title: v.title || query,
+            author: v.author?.name || 'Unknown',
+            duration: v.seconds || 0,
+            views: v.views || 0,
+            thumbnail: v.thumbnail || v.image || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
+            url: `https://youtu.be/${v.videoId}`,
+        };
+    } catch (e) {
+        console.log('[play] yt-search fail:', e.message?.slice(0, 120));
+        return null;
+    }
+}
+
+let ytClient = null;
+async function searchYoutubei(query) {
+    try {
+        const { Innertube, UniversalCache } = require('youtubei.js');
+        // no cookies here: search doesn't need them and stale cookies can break it
+        if (!ytClient) ytClient = await Innertube.create({ cache: new UniversalCache(false), generate_session_locally: true });
+        const search = await ytClient.search(query, { type: 'video' });
+        const v = (search.results || []).find(r => r && r.type === 'Video' && r.id);
+        if (!v) return null;
+        return {
+            videoId: v.id,
+            title: v.title?.text || String(v.title || query),
+            author: v.author?.name || 'Unknown',
+            duration: v.duration?.seconds || 0,
+            views: v.view_count?.text || 0,
+            thumbnail: v.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`,
+            url: `https://youtu.be/${v.id}`,
+        };
+    } catch (e) {
+        ytClient = null;
+        console.log('[play] youtubei search fail:', e.message?.slice(0, 120));
+        return null;
+    }
+}
+
 async function searchThesync(query) {
     try {
         const { data } = await axios.get('https://apis.thesync.my.id/api/v1/search/music', {
             params: { action: 'search', q: query, filter: 'songs' },
             timeout: 12000,
-            headers: { 'User-Agent': 'Madara-X-MD/1.2' }
+            headers: { 'User-Agent': 'Madara-X-MD/1.2' },
         });
         if (!data?.success || !Array.isArray(data.data) || !data.data.length) return null;
         const t = data.data[0];
@@ -95,7 +244,6 @@ async function searchThesync(query) {
             views: t.plays || t.album || 'N/A',
             thumbnail: t.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
             url: t.youtubeUrl || `https://youtu.be/${videoId}`,
-            sourceHint: 'thesync'
         };
     } catch (e) {
         console.log('[play] thesync search fail:', e.message?.slice(0, 120));
@@ -103,156 +251,176 @@ async function searchThesync(query) {
     }
 }
 
-function resolveYtDlpBin() {
-    const local = path.join(process.cwd(), 'yt-dlp');
-    if (fs.existsSync(local)) return local;
-    return 'yt-dlp';
+async function searchYtDlp(query) {
+    try {
+        const bin = await getYtDlp();
+        if (!bin) return null;
+        const { stdout } = await ytdlp(bin, ['--no-warnings', '--flat-playlist', '--dump-single-json', `ytsearch1:${query}`], 45000);
+        const e = JSON.parse(stdout)?.entries?.[0];
+        if (!e?.id) return null;
+        return {
+            videoId: e.id,
+            title: e.title || query,
+            author: e.uploader || e.channel || 'Unknown',
+            duration: e.duration || 0,
+            views: e.view_count || 0,
+            thumbnail: e.thumbnails?.[e.thumbnails.length - 1]?.url || `https://i.ytimg.com/vi/${e.id}/hqdefault.jpg`,
+            url: `https://youtu.be/${e.id}`,
+        };
+    } catch (e) {
+        console.log('[play] yt-dlp search fail:', String(e.stderr || e.message || '').slice(0, 120));
+        return null;
+    }
 }
 
-// ========== YT-DLP - FULL SONG (multi-client retry) ==========
-async function fromYtDlp(video) {
-    const outPath = path.join('/tmp', `madara_${video.videoId}.%(ext)s`);
-    const finalMp3 = path.join('/tmp', `madara_${video.videoId}.mp3`);
-    const bin = resolveYtDlpBin();
-
-    // Client strategies — first success wins
-    const strategies = [
-        ['android', 'web'],
-        ['ios', 'web'],
-        ['android_music', 'android'],
-        ['tv', 'web'],
-        ['web'],
-    ];
-
-    for (const clients of strategies) {
-        try {
-            // clean previous
-            for (const f of [finalMp3, path.join('/tmp', `madara_${video.videoId}.m4a`), path.join('/tmp', `madara_${video.videoId}.webm`)]) {
-                try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
-            }
-
-            const args = [
-                '-x',
-                '--audio-format', 'mp3',
-                '--audio-quality', '0',
-                '--extractor-args', `youtube:player_client=${clients.join(',')}`,
-                '--no-playlist',
-                '--no-warnings',
-                '--no-check-certificates',
-                '--geo-bypass',
-                '-o', outPath,
-                `https://www.youtube.com/watch?v=${video.videoId}`,
-            ];
-            if (HAS_COOKIE_FILE) {
-                args.splice(args.indexOf('-o'), 0, '--cookies', path.join(process.cwd(), 'cookies.txt'));
-            }
-
-            console.log('[play] yt-dlp try clients=', clients.join('+'), 'vid=', video.videoId);
-            await execFileAsync(bin, args, {
-                timeout: 150000,
-                maxBuffer: 20 * 1024 * 1024,
-                env: { ...process.env, PYTHONUTF8: '1' },
-            });
-
-            // Find produced audio
-            let produced = null;
-            for (const ext of ['mp3', 'm4a', 'webm', 'opus']) {
-                const p = path.join('/tmp', `madara_${video.videoId}.${ext}`);
-                if (fs.existsSync(p) && fs.statSync(p).size > 1000) {
-                    produced = p;
-                    break;
-                }
-            }
-            if (!produced) {
-                console.log('[play] yt-dlp no file for clients', clients.join('+'));
-                continue;
-            }
-
-            const buffer = fs.readFileSync(produced);
-            try { fs.unlinkSync(produced); } catch {}
-            if (!buffer?.length) continue;
-
-            console.log('[play] yt-dlp success:', (buffer.length / 1024 / 1024).toFixed(2) + 'MB', 'via', clients.join('+'));
-            return {
-                source: video.sourceHint === 'thesync' ? 'youtube-thesync+yt-dlp' : 'youtube-yt-dlp',
-                title: video.title,
-                author: video.author,
-                duration: video.duration,
-                views: video.views,
-                thumbnail: video.thumbnail,
-                url: video.url,
-                buffer,
-                mimetype: 'audio/mpeg',
-                isAudio: true,
-            };
-        } catch (e) {
-            const err = (e.stderr || e.message || '').toString().slice(0, 220);
-            console.log('[play] yt-dlp fail', clients.join('+'), ':', err);
-        }
+async function searchVideo(query) {
+    for (const fn of [searchYtSearch, searchYoutubei, searchThesync, searchYtDlp]) {
+        const v = await fn(query);
+        if (v) return v;
     }
     return null;
 }
 
-// ========== COBALT-STYLE / PUBLIC FULL DOWNLOAD FALLBACKS ==========
-async function fromCobaltLike(video) {
-    // Try a few public yt audio endpoints that return a direct URL
-    const attempts = [
-        async () => {
-            const { data } = await axios.post(
-                'https://api.cobalt.tools/api/json',
-                {
-                    url: `https://www.youtube.com/watch?v=${video.videoId}`,
-                    isAudioOnly: true,
-                    aFormat: 'mp3',
-                    filenamePattern: 'basic',
-                },
-                {
-                    timeout: 25000,
-                    headers: {
-                        Accept: 'application/json',
-                        'Content-Type': 'application/json',
-                        'User-Agent': 'Mozilla/5.0',
-                    },
-                }
-            );
-            const url = data?.url || data?.audio || data?.streamURL;
-            if (!url) return null;
-            const audio = await axios.get(url, { responseType: 'arraybuffer', timeout: 90000, maxContentLength: 40 * 1024 * 1024 });
-            return Buffer.from(audio.data);
-        },
-        async () => {
-            // savetube-style (may rotate hosts)
-            const { data } = await axios.get(
-                `https://api.siputzx.my.id/api/d/ytmp3?url=https://www.youtube.com/watch?v=${video.videoId}`,
-                { timeout: 25000, headers: { 'User-Agent': 'Madara-X-MD/1.2' } }
-            );
-            const url = data?.data?.dl || data?.result?.url || data?.url || data?.download;
-            if (!url) return null;
-            const audio = await axios.get(url, { responseType: 'arraybuffer', timeout: 90000, maxContentLength: 40 * 1024 * 1024 });
-            return Buffer.from(audio.data);
-        },
+// ========== yt-dlp DOWNLOAD (full song) ==========
+const PRODUCED_EXTS = ['mp3', 'm4a', 'webm', 'opus', 'ogg'];
+const MIME_BY_EXT = { mp3: 'audio/mpeg', m4a: 'audio/mp4', webm: 'audio/ogg; codecs=opus', opus: 'audio/ogg; codecs=opus', ogg: 'audio/ogg; codecs=opus' };
+
+function cleanupTmp(videoId) {
+    for (const ext of PRODUCED_EXTS.concat(['part', 'ytdl'])) {
+        try { fs.unlinkSync(path.join(TMP, `madara_${videoId}.${ext}`)); } catch {}
+    }
+}
+
+async function fromYtDlp(video) {
+    const bin = await getYtDlp();
+    if (!bin) { console.log('[play] no yt-dlp binary available'); return null; }
+
+    const ffmpeg = await getFfmpeg();
+    let ffmpegBroken = false;
+    const cookieFile = prepareCookieFile();
+    const outTpl = path.join(TMP, `madara_${video.videoId}.%(ext)s`);
+
+    // Fixed android/ios client lists are dead (they need PO tokens). Use yt-dlp's own default
+    // first, then clients that still work. android_vr does NOT support cookies → run it bare.
+    const strategies = [
+        { client: null, cookies: true },
+        { client: null, cookies: false },
+        { client: 'android_vr', cookies: false },
+        { client: 'tv', cookies: true },
+        { client: 'web_safari', cookies: true },
     ];
+    const seen = new Set();
+
+    for (const st of strategies) {
+        const useCookies = Boolean(st.cookies && cookieFile);
+        const key = `${st.client}|${useCookies}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        const useFfmpeg = Boolean(ffmpeg) && !ffmpegBroken;
+        cleanupTmp(video.videoId);
+
+        const args = [
+            '--no-playlist', '--no-warnings', '--no-check-certificates', '--geo-bypass',
+            '--socket-timeout', '20', '--retries', '2',
+            '-o', outTpl,
+        ];
+        if (useFfmpeg) {
+            if (path.isAbsolute(ffmpeg)) args.push('--ffmpeg-location', ffmpeg);
+            args.push('-f', 'bestaudio/best', '-x', '--audio-format', 'mp3', '--audio-quality', '0');
+        } else {
+            args.push('-f', 'bestaudio[ext=m4a]/bestaudio');
+        }
+        if (st.client) args.push('--extractor-args', `youtube:player_client=${st.client}`);
+        if (useCookies) args.push('--cookies', cookieFile);
+        if (process.env.YTDLP_PROXY) args.push('--proxy', process.env.YTDLP_PROXY);
+        args.push(`https://www.youtube.com/watch?v=${video.videoId}`);
+
+        const label = `${st.client || 'default'}${useCookies ? '+cookies' : ''}`;
+        try {
+            console.log('[play] yt-dlp try', label, 'vid=', video.videoId);
+            await ytdlp(bin, args, 150000);
+
+            let produced = null;
+            let ext = null;
+            for (const e of PRODUCED_EXTS) {
+                const p = path.join(TMP, `madara_${video.videoId}.${e}`);
+                if (fs.existsSync(p) && fs.statSync(p).size > 1000) { produced = p; ext = e; break; }
+            }
+            if (!produced) { console.log('[play] yt-dlp produced no file via', label); continue; }
+
+            const buffer = fs.readFileSync(produced);
+            cleanupTmp(video.videoId);
+            if (!buffer.length) continue;
+
+            console.log('[play] yt-dlp success:', (buffer.length / 1024 / 1024).toFixed(2) + 'MB via', label);
+            return {
+                source: 'youtube-yt-dlp',
+                title: video.title, author: video.author, duration: video.duration,
+                views: video.views, thumbnail: video.thumbnail, url: video.url,
+                buffer, ext, mimetype: MIME_BY_EXT[ext] || 'audio/mpeg', isAudio: true,
+            };
+        } catch (e) {
+            const err = String(e.stderr || e.message || '').trim();
+            console.log('[play] yt-dlp fail', label, ':', err.split('\n').slice(-2).join(' | ').slice(0, 260));
+            noteYtError(err);
+            if (/ffmpeg|ffprobe/i.test(err) && /not found|not installed|requires/i.test(err)) ffmpegBroken = true;
+            if (/Video unavailable|Private video|has been removed|not available in your country/i.test(err)) break;
+        }
+    }
+    cleanupTmp(video.videoId);
+    return null;
+}
+
+// ========== API FALLBACKS ==========
+async function downloadBuffer(url) {
+    const res = await axios.get(url, {
+        responseType: 'arraybuffer', timeout: 90000,
+        maxContentLength: MAX_AUDIO_BYTES, headers: { 'User-Agent': UA },
+    });
+    return Buffer.from(res.data);
+}
+
+async function fromApis(video) {
+    const ytUrl = `https://www.youtube.com/watch?v=${video.videoId}`;
+    const attempts = [];
+
+    // Your OWN cobalt instance (api.cobalt.tools blocks third-party use now) — cobalt v10 API
+    if (process.env.COBALT_API_URL) {
+        attempts.push(async () => {
+            const headers = { Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': UA };
+            if (process.env.COBALT_API_KEY) headers.Authorization = `Api-Key ${process.env.COBALT_API_KEY}`;
+            const { data } = await axios.post(process.env.COBALT_API_URL,
+                { url: ytUrl, downloadMode: 'audio', audioFormat: 'mp3' },
+                { timeout: 30000, headers });
+            if (!['tunnel', 'redirect'].includes(data?.status) || !data.url) return null;
+            return downloadBuffer(data.url);
+        });
+    }
+
+    // Public API — these rot often, so it's only a fallback
+    attempts.push(async () => {
+        const { data } = await axios.get(`https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(ytUrl)}`, {
+            timeout: 25000, headers: { 'User-Agent': 'Madara-X-MD/1.2' },
+        });
+        const url = data?.data?.dl || data?.result?.url || data?.url || data?.download;
+        return url ? downloadBuffer(url) : null;
+    });
 
     for (const fn of attempts) {
         try {
             const buffer = await fn();
             if (buffer && buffer.length > 50_000) {
-                console.log('[play] full-download API success:', (buffer.length / 1024 / 1024).toFixed(2) + 'MB');
+                console.log('[play] API download success:', (buffer.length / 1024 / 1024).toFixed(2) + 'MB');
                 return {
-                    source: 'youtube-api+full',
-                    title: video.title,
-                    author: video.author,
-                    duration: video.duration,
-                    views: video.views,
-                    thumbnail: video.thumbnail,
-                    url: video.url,
-                    buffer,
-                    mimetype: 'audio/mpeg',
-                    isAudio: true,
+                    source: 'youtube-api',
+                    title: video.title, author: video.author, duration: video.duration,
+                    views: video.views, thumbnail: video.thumbnail, url: video.url,
+                    buffer, ext: 'mp3', mimetype: 'audio/mpeg', isAudio: true,
                 };
             }
         } catch (e) {
-            console.log('[play] full-download API fail:', e.message?.slice(0, 120));
+            console.log('[play] API download fail:', e.message?.slice(0, 120));
         }
     }
     return null;
@@ -261,9 +429,7 @@ async function fromCobaltLike(video) {
 // ========== DEEZER / ITUNES 30s (last resort only) ==========
 async function fromDeezer(query) {
     try {
-        const { data } = await axios.get('https://api.deezer.com/search', {
-            params: { q: query }, timeout: 10000
-        });
+        const { data } = await axios.get('https://api.deezer.com/search', { params: { q: query }, timeout: 10000 });
         const t = data?.data?.[0];
         if (!t?.preview) return null;
         const audio = await axios.get(t.preview, { responseType: 'arraybuffer', timeout: 20000 });
@@ -271,16 +437,14 @@ async function fromDeezer(query) {
             source: 'Deezer Preview',
             title: t.title, author: t.artist?.name, duration: t.duration,
             views: 'N/A', thumbnail: t.album?.cover_xl, url: t.link,
-            buffer: Buffer.from(audio.data), mimetype: 'audio/mpeg', isAudio: true
+            buffer: Buffer.from(audio.data), ext: 'mp3', mimetype: 'audio/mpeg', isAudio: true,
         };
     } catch { return null; }
 }
 
 async function fromItunes(query) {
     try {
-        const { data } = await axios.get('https://itunes.apple.com/search', {
-            params: { term: query, media: 'music', limit: 1 }, timeout: 10000
-        });
+        const { data } = await axios.get('https://itunes.apple.com/search', { params: { term: query, media: 'music', limit: 1 }, timeout: 10000 });
         const t = data?.results?.[0];
         if (!t?.previewUrl) return null;
         const audio = await axios.get(t.previewUrl, { responseType: 'arraybuffer', timeout: 20000 });
@@ -290,28 +454,24 @@ async function fromItunes(query) {
             duration: Math.floor(t.trackTimeMillis / 1000),
             views: 'N/A', thumbnail: t.artworkUrl100?.replace('100x100', '600x600'),
             url: t.trackViewUrl, buffer: Buffer.from(audio.data),
-            mimetype: 'audio/mpeg', isAudio: true
+            ext: 'm4a', mimetype: 'audio/mp4', isAudio: true,
         };
     } catch { return null; }
 }
 
 // ========== MAIN ==========
 async function getAudio(query) {
-    let video = await searchYoutube(query);
-    if (!video) {
-        console.log('[play] falling to thesync search');
-        video = await searchThesync(query);
-    }
+    const video = await searchVideo(query);
 
     if (video) {
-        // 1) yt-dlp multi-client
         const full = await fromYtDlp(video);
         if (full) return full;
 
-        // 2) public full download APIs
-        console.log('[play] yt-dlp failed, trying full download APIs');
-        const apiFull = await fromCobaltLike(video);
+        console.log('[play] yt-dlp failed, trying API downloads');
+        const apiFull = await fromApis(video);
         if (apiFull) return apiFull;
+    } else {
+        console.log('[play] no YouTube result for query');
     }
 
     console.log('[play] all full sources failed → 30s preview');
@@ -339,17 +499,16 @@ async function execute(sock, msg, args) {
 
     try { await sock.sendMessage(from, { react: { text: '🎵', key: msg.key } }); } catch {}
 
-    // soft status so user knows it's working (full downloads take longer)
     let statusMsg = null;
     try {
         statusMsg = await sock.sendMessage(from, { text: '⏳ Searching & downloading full track…' }, { quoted: msg });
     } catch {}
 
     const result = await getAudio(query);
+    if (statusMsg?.key) {
+        try { await sock.sendMessage(from, { delete: statusMsg.key }); } catch {}
+    }
     if (!result) {
-        if (statusMsg?.key) {
-            try { await sock.sendMessage(from, { delete: statusMsg.key }); } catch {}
-        }
         return sock.sendMessage(from, { text: '❌ No audio found for: ' + query }, { quoted: msg });
     }
 
@@ -369,16 +528,11 @@ async function execute(sock, msg, args) {
 ╰──────────────────
 > *© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ☆ᴍᴀᴅᴀʀᴀ ɪɴᴄᴏʀᴘᴏʀᴀᴛɪᴏɴ.*`;
 
-    if (statusMsg?.key) {
-        try { await sock.sendMessage(from, { delete: statusMsg.key }); } catch {}
-    }
-
-    // Prefer document-style audio with filename so WA shows full length cleanly
     await sock.sendMessage(from, {
         audio: result.buffer,
         mimetype: result.mimetype || 'audio/mpeg',
         ptt: false,
-        fileName: `${String(result.title || 'track').replace(/[^\w\s-]/g, '').slice(0, 40)}.mp3`,
+        fileName: `${String(result.title || 'track').replace(/[^\w\s-]/g, '').slice(0, 40)}.${result.ext || 'mp3'}`,
         caption,
         contextInfo: result.thumbnail ? {
             externalAdReply: {
@@ -388,7 +542,7 @@ async function execute(sock, msg, args) {
                 thumbnailUrl: result.thumbnail,
                 sourceUrl: result.url || undefined,
                 renderLargerThumbnail: true,
-            }
+            },
         } : undefined,
     }, { quoted: msg });
 }
@@ -399,5 +553,5 @@ module.exports = {
     desc: 'Play music (full track)',
     category: 'media',
     execute,
-    run: execute
+    run: execute,
 };
