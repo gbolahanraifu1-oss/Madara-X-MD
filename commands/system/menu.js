@@ -187,6 +187,14 @@ async function sendDefaultInteractiveMenu(sock, msg, ctx, str, headerMedia, sect
             nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
                 buttons: [
                     {
+                        name: 'quick_reply',
+                        buttonParamsJson: JSON.stringify({ display_text: '⚙️ SYSTEM', id: 'madara_cat_system' })
+                    },
+                    {
+                        name: 'quick_reply',
+                        buttonParamsJson: JSON.stringify({ display_text: '👥 GROUP', id: 'madara_cat_group' })
+                    },
+                    {
                         name: 'single_select',
                         buttonParamsJson: JSON.stringify({
                             title: '📂 ᴍᴀᴅᴀʀᴀ ᴍᴇɴᴜ',
@@ -198,6 +206,9 @@ async function sendDefaultInteractiveMenu(sock, msg, ctx, str, headerMedia, sect
         })
     }, { quoted: msg });
 
+    // Mixed native-flow buttons (quick_reply + single_select) need the
+    // "mixed" / v9 biz node, same as the v1.2 menu. A bare single_select node
+    // can be relayed without error yet render no button on some clients.
     await sock.relayMessage(ctx.from, menuMsg.message, {
         messageId: menuMsg.key.id,
         additionalNodes: [{
@@ -208,7 +219,7 @@ async function sendDefaultInteractiveMenu(sock, msg, ctx, str, headerMedia, sect
                 attrs: { type: 'native_flow', v: '1' },
                 content: [{
                     tag: 'native_flow',
-                    attrs: { v: '1', name: 'single_select' }
+                    attrs: { v: '9', name: 'mixed' }
                 }]
             }]
         }]
@@ -272,39 +283,11 @@ async function maybeSendMenuAudio(sock, from) {
     }
 }
 
-async function execute(sock, msg, args, ctx) {
-    // ── Design engine: pain is the default skin ──
-    try {
-        var menuEngine = require('../../lib/menuEngine');
-        var chatId = msg.chat || ctx.from;
-        var senderId = (msg.key && msg.key.participant) || msg.sender || ctx.sender || chatId;
-        var skin = menuEngine.getDesignIdFor(chatId, senderId);
-
-        // Force pain when unset / default
-        if (!skin || skin === 'default') skin = DEFAULT_SKIN;
-
-        try {
-            await menuEngine.render(sock, msg, args, skin, ctx);
-            await maybeSendMenuAudio(sock, ctx.from);
-            return;
-        } catch (e) {
-            console.log('[MENU] design "' + skin + '" failed → stock fallback:', e.message);
-            // If preferred skin failed and it wasn't pain, try pain once
-            if (skin !== DEFAULT_SKIN) {
-                try {
-                    await menuEngine.render(sock, msg, args, DEFAULT_SKIN, ctx);
-                    await maybeSendMenuAudio(sock, ctx.from);
-                    return;
-                } catch (e2) {
-                    console.log('[MENU] pain fallback also failed:', e2.message);
-                }
-            }
-        }
-    } catch (e) {
-        console.log('[MENU] skin outer error:', e.message);
-    }
-
-    // ── Stock interactive / media fallback (only if pain + design engine dead) ──
+// ── Stock (non-skin) menu ───────────────────────────────────────────────
+// Interactive menu with category list; falls back to media/text if relay fails.
+// Exported so lib/randomMenu.js can fall back here instead of execute(), which
+// would render the default skin (Pain) again and look like a dead button.
+async function sendStockMenu(sock, msg, args, ctx) {
     var s = ctx.settings;
     var prefix = s.prefix || '.';
     var name = ctx.pushName || sc(s.ownerName);
@@ -349,6 +332,47 @@ async function execute(sock, msg, args, ctx) {
     if (menuSent) await maybeSendMenuAudio(sock, ctx.from);
 }
 
+async function execute(sock, msg, args, ctx) {
+    // ".menu stock" skips the skin engine (handy for testing the stock menu)
+    if (args && String(args[0] || '').toLowerCase() === 'stock') {
+        return sendStockMenu(sock, msg, args, ctx);
+    }
+
+    // ── Design engine: pain is the default skin ──
+    try {
+        var menuEngine = require('../../lib/menuEngine');
+        var chatId = msg.chat || ctx.from;
+        var senderId = (msg.key && msg.key.participant) || msg.sender || ctx.sender || chatId;
+        var skin = menuEngine.getDesignIdFor(chatId, senderId);
+
+        // Force pain when unset / default
+        if (!skin || skin === 'default') skin = DEFAULT_SKIN;
+
+        try {
+            await menuEngine.render(sock, msg, args, skin, ctx);
+            await maybeSendMenuAudio(sock, ctx.from);
+            return;
+        } catch (e) {
+            console.log('[MENU] design "' + skin + '" failed → stock fallback:', e.message);
+            // If preferred skin failed and it wasn't pain, try pain once
+            if (skin !== DEFAULT_SKIN) {
+                try {
+                    await menuEngine.render(sock, msg, args, DEFAULT_SKIN, ctx);
+                    await maybeSendMenuAudio(sock, ctx.from);
+                    return;
+                } catch (e2) {
+                    console.log('[MENU] pain fallback also failed:', e2.message);
+                }
+            }
+        }
+    } catch (e) {
+        console.log('[MENU] skin outer error:', e.message);
+    }
+
+    // ── Stock menu (only if pain + design engine are dead) ──
+    return sendStockMenu(sock, msg, args, ctx);
+}
+
 module.exports = {
     name: 'menu',
     aliases: ['commands', 'cmds', 'help', 'h', 'main'],
@@ -357,6 +381,7 @@ module.exports = {
     usage: '.menu',
     waitReact: false,
     execute: execute,
+    sendStockMenu: sendStockMenu,
     sendCategoryMenu: sendCategoryMenu,
     sendCategoryDirectory: sendCategoryDirectory,
     splitMenuLines: splitMenuLines,
