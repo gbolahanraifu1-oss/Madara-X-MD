@@ -1,6 +1,6 @@
 /**
  * styleBox — Madara X-MD shared text styling helpers.
- * Bold-italic Unicode + boxed reply wrapper used across every command.
+ * Akatsuki / Crimson Command layout + Unicode typography helpers.
  */
 
 // Mathematical Sans-Serif Bold Italic block (𝘼𝘽𝘾 / 𝙖𝙗𝙘)
@@ -33,31 +33,47 @@ function boldSans(str) {
     return out;
 }
 
-// Wrap plain text into the signature Madara X-MD Rinnegan boxed card.
-// If the text already looks like a box (starts with ╭ or ╔), pass it through.
-function boxify(text, title = 'MADARA X-MD') {
+// Format a structured key-value line inside a card
+function field(label, value) {
+    return `▸ ${boldSans(label)}: ${value}`;
+}
+
+// Insert a clean horizontal divider inside multi-section replies
+function divider() {
+    return `┄┄┄┄┄┄┄┄┄┄┄┄┄┄`;
+}
+
+// Wrap plain text into the Akatsuki / Crimson Command card.
+// Pass options like { status: 'ERROR', footer: 'Custom Tag' } per command.
+function boxify(text, title = 'MADARA X-MD', options = {}) {
     const raw = String(text == null ? '' : text);
     const trimmed = raw.trim();
     if (!trimmed) return raw;
-    if (trimmed.startsWith('╭') || trimmed.startsWith('╔') || trimmed.startsWith('┌')) {
+
+    // Avoid double-wrapping already boxed strings
+    if (/^[╭╔┌]/.test(trimmed)) {
         return raw;
     }
 
-    const lines = raw.split('\n');
-    let out = '';
-    out += `╭═══『 ${boldItalic(title)} 』═══╮\n`;
-    out += `│  ◈ ＲＩＮＮＥＧＡＮ ＡＣＴＩＶＥ ◈\n`;
-    out += `├──────────────────┤\n`;
-    for (const line of lines) {
-        if (line.trim() === '') {
-            out += `│\n`;
-            continue;
-        }
-        out += `│  ${line}\n`;
-    }
-    out += `╰══════════════════╯\n`;
-    out += `     ╰─⟪ ${boldItalic('Madara X-MD')} ⟫─╯`;
-    return out;
+    const {
+        status = 'ＡＫＡＴＳＵＫＩ • ＯＮＬＩＮＥ',
+        footer = boldItalic('Madara X-MD'),
+        compact = false,
+    } = options;
+
+    const lines = raw.split('\n').map((line) => (line.trim() === '' ? '' : `  ${line}`));
+    const body = compact ? lines.filter((line) => line !== '') : lines;
+
+    return [
+        `╔═❖ ${boldItalic(title)} ❖═╗`,
+        status ? `║  ● ${boldSans(status)}` : null,
+        `╠══════════════`,
+        ...body.map((line) => (line === '' ? '║' : `║${line}`)),
+        `╚══════════════`,
+        footer ? `   ▲ ${footer}` : null,
+    ]
+        .filter((part) => part !== null)
+        .join('\n');
 }
 
-module.exports = { boldItalic, boldSans, boxify };
+module.exports = { boldItalic, boldSans, field, divider, boxify };
