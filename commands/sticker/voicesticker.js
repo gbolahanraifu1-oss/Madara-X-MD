@@ -17,7 +17,7 @@ const crypto        = require('crypto');
 
 const exec = promisify(execFile);
 
-const MAX_SECONDS  = 7;
+const MAX_SECONDS  = 15;
 const STEP_TIMEOUT = 120_000;
 
 const log = (...a) => console.log('[voicesticker]', ...a);
