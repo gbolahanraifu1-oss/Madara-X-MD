@@ -133,9 +133,8 @@ module.exports = {
             break;
         }
 
-        // Attempt 3 — ask the phone to resend
-        const quotedHasMedia = !!unwrap(ctxInfo.quotedMessage).type;
-        if (!found && (quotedHasMedia || notes.some(n => n.includes('empty')))) {
+        // Attempt 3 — ask the phone to resend (always try if 1+2 failed)
+        if (!found) {
             await ctx.reply(`⏳ Requesting media from sender's phone, please wait…${s.FOOTER}`);
             const back = await askPhone(sock, key);
             if (back) { found = back.u; console.log('[VV] phone resent it'); }
