@@ -1,6 +1,6 @@
 'use strict';
 const axios=require('axios');
-module.exports={name:'wallpaper',aliases:['wallhaven','wallpaper2'],category:'search',desc:'ɢᴇᴛ ʜᴅ ᴡᴀʟʟᴘᴀᴘᴇʀ',usage:'†wallpaper <query>',
+module.exports={name:'wallpaper2',aliases:['wallhaven','wallpaper2'],category:'search',desc:'ɢᴇᴛ ʜᴅ ᴡᴀʟʟᴘᴀᴘᴇʀ',usage:'†wallpaper <query>',
 async execute(sock,msg,args,ctx){const s=ctx.settings;
 const q=args.join(' ')||'anime';
 try{const r=await require('axios').get('https://wallhaven.cc/api/v1/search?q='+encodeURIComponent(q)+'&purity=100&categories=111&sorting=random&page=1');
