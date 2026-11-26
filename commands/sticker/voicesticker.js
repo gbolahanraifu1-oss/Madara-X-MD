@@ -4,18 +4,10 @@
  * Reply to a video and send .vs / .voicesticker
  * Trims to 7s max → animated WebP sticker + M4A audio → audioStickerMessage
  *
- * Dependencies: ffmpeg-static, ffprobe-static (npm install ffmpeg-static ffprobe-static)
+ * Supports multi-Baileys (via ctx.baileys / ctx.baileysPkg / env BAILEYS_PKG)
+ * and fallback binary lookup for ffmpeg / ffprobe.
  */
 
-const {
-    prepareWAMessageMedia,
-    generateWAMessageFromContent,
-    generateMessageIDV2,
-    downloadContentFromMessage,
-} = require('@itsliaaa/baileys');
-
-const ffmpegPath    = require('ffmpeg-static');
-const ffprobeStatic = require('ffprobe-static');
 const { execFile }  = require('child_process');
 const { promisify } = require('util');
 const fs            = require('fs');
@@ -23,9 +15,7 @@ const os            = require('os');
 const path          = require('path');
 const crypto        = require('crypto');
 
-const exec    = promisify(execFile);
-const FFMPEG  = ffmpegPath;
-const FFPROBE = ffprobeStatic.path;
+const exec = promisify(execFile);
 
 const MAX_SECONDS  = 7;
 const STEP_TIMEOUT = 120_000;
@@ -46,11 +36,78 @@ const cleanup = (dirs) => {
     }
 };
 
+// ── multi-baileys resolver ────────────────────────────────────────────────────
+
+const BAILEYS_CANDIDATES = [
+    '@itsliaaa/baileys',
+    '@dark-yasiya/baileys',
+    '@whiskeysockets/baileys',
+    'baileys',
+];
+
+function tryRequire(pkgName) {
+    if (!pkgName) return null;
+    try {
+        const mod = require(pkgName);
+        return mod?.default && typeof mod.prepareWAMessageMedia !== 'function'
+            ? mod.default
+            : mod;
+    } catch {
+        return null;
+    }
+}
+
+function resolveBaileys(sock, ctx) {
+    // 1. Direct module passed on ctx or sock
+    if (ctx?.baileys?.prepareWAMessageMedia) return ctx.baileys;
+    if (sock?.baileys?.prepareWAMessageMedia) return sock.baileys;
+
+    // 2. Explicit package name from ctx or env
+    const preferredPkg = ctx?.baileysPkg || process.env.BAILEYS_PKG;
+    const preferredMod = tryRequire(preferredPkg);
+    if (preferredMod?.prepareWAMessageMedia) return preferredMod;
+
+    // 3. Fallback across known Baileys packages
+    for (const candidate of BAILEYS_CANDIDATES) {
+        const mod = tryRequire(candidate);
+        if (mod?.prepareWAMessageMedia) return mod;
+    }
+
+    throw new Error(
+        `Could not load a compatible Baileys module (tried ${[preferredPkg, ...BAILEYS_CANDIDATES].filter(Boolean).join(', ')})`
+    );
+}
+
+// ── ffmpeg / ffprobe path resolver ────────────────────────────────────────────
+
+function resolveBinary(type) {
+    const isProbe = type === 'ffprobe';
+    const envVar = isProbe ? process.env.FFPROBE_PATH : process.env.FFMPEG_PATH;
+    if (envVar && fs.existsSync(envVar)) return envVar;
+
+    // Check ffmpeg-static / ffprobe-static if binary exists on disk
+    try {
+        const staticMod = isProbe ? require('ffprobe-static') : require('ffmpeg-static');
+        const staticPath = typeof staticMod === 'string' ? staticMod : staticMod?.path;
+        if (staticPath && fs.existsSync(staticPath)) return staticPath;
+    } catch {}
+
+    // Check @ffmpeg-installer/ffmpeg or @ffprobe-installer/ffprobe
+    try {
+        const installerPkg = isProbe ? '@ffprobe-installer/ffprobe' : '@ffmpeg-installer/ffmpeg';
+        const installerMod = require(installerPkg);
+        if (installerMod?.path && fs.existsSync(installerMod.path)) return installerMod.path;
+    } catch {}
+
+    // Fallback to system PATH
+    return isProbe ? 'ffprobe' : 'ffmpeg';
+}
+
 // ── ffmpeg helpers ────────────────────────────────────────────────────────────
 
-async function probe(file) {
+async function probe(file, ffprobeBin) {
     try {
-        const { stdout } = await exec(FFPROBE, [
+        const { stdout } = await exec(ffprobeBin, [
             '-v', 'error',
             '-show_entries', 'stream=codec_type,width,height:format=duration',
             '-of', 'json', file,
@@ -67,8 +124,8 @@ async function probe(file) {
     }
 }
 
-async function trimVideo(input, output) {
-    const { duration } = await probe(input);
+async function trimVideo(input, output, ffmpegBin, ffprobeBin) {
+    const { duration } = await probe(input, ffprobeBin);
     const args = ['-y', '-i', input];
     if (duration > MAX_SECONDS) args.push('-t', String(MAX_SECONDS));
     args.push(
@@ -77,25 +134,25 @@ async function trimVideo(input, output) {
         '-c:a', 'aac', '-b:a', '96k',
         '-movflags', '+faststart', output
     );
-    await exec(FFMPEG, args, { timeout: STEP_TIMEOUT });
+    await exec(ffmpegBin, args, { timeout: STEP_TIMEOUT });
 }
 
-async function makeAnimatedWebp(video, output) {
-    await exec(FFMPEG, [
+async function makeAnimatedWebp(video, output, ffmpegBin) {
+    await exec(ffmpegBin, [
         '-y', '-i', video,
         '-vf', 'fps=10,scale=512:512:force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2',
         '-c:v', 'libwebp', '-quality', '70', '-an', '-loop', '0', output,
     ], { timeout: STEP_TIMEOUT });
 }
 
-async function makeM4aAudio(video, output) {
-    await exec(FFMPEG, [
+async function makeM4aAudio(video, output, ffmpegBin) {
+    await exec(ffmpegBin, [
         '-y', '-i', video,
         '-vn', '-c:a', 'aac', '-b:a', '96k', output,
     ], { timeout: STEP_TIMEOUT });
 }
 
-async function downloadQuotedVideo(sock, ctxInfo) {
+async function downloadQuotedVideo(sock, ctxInfo, downloadContentFromMessage) {
     const videoMessage = ctxInfo?.quotedMessage?.videoMessage;
     if (!videoMessage) return null;
     const stream = await downloadContentFromMessage(videoMessage, 'video', {
@@ -116,8 +173,8 @@ module.exports = {
     usage: '.vs (reply to a video)',
     ownerOnly: false,
 
-    async execute(sock, msg, args, ctx) {
-        const s = ctx.settings;
+    async execute(sock, msg, args, ctx = {}) {
+        const s = ctx.settings || { FOOTER: '' };
 
         const ctxInfo = msg.message?.extendedTextMessage?.contextInfo
                      || msg.message?.imageMessage?.contextInfo
@@ -143,8 +200,25 @@ module.exports = {
         const audioFile   = path.join(tmpDir, 'sound.m4a');
 
         try {
+            const baileys = resolveBaileys(sock, ctx);
+            const {
+                prepareWAMessageMedia,
+                generateWAMessageFromContent,
+                generateMessageIDV2,
+                downloadContentFromMessage,
+            } = baileys;
+
+            const ffmpegBin  = resolveBinary('ffmpeg');
+            const ffprobeBin = resolveBinary('ffprobe');
+
+            log('using ffmpeg:', ffmpegBin, '| ffprobe:', ffprobeBin);
+
             log('1/6 downloading video…');
-            const buffer = await withTimeout(downloadQuotedVideo(sock, ctxInfo), STEP_TIMEOUT, 'video download');
+            const buffer = await withTimeout(
+                downloadQuotedVideo(sock, ctxInfo, downloadContentFromMessage),
+                STEP_TIMEOUT,
+                'video download'
+            );
             if (!buffer?.length) return ctx.reply(`❌ Could not download the video.${s.FOOTER}`);
 
             fs.mkdirSync(tmpDir, { recursive: true });
@@ -152,17 +226,17 @@ module.exports = {
             log('1/6 downloaded:', buffer.length, 'bytes');
 
             log('2/6 trimming + scaling…');
-            await withTimeout(trimVideo(rawFile, trimmedFile), STEP_TIMEOUT, 'ffmpeg trim');
-            const meta = await probe(trimmedFile);
+            await withTimeout(trimVideo(rawFile, trimmedFile, ffmpegBin, ffprobeBin), STEP_TIMEOUT, 'ffmpeg trim');
+            const meta = await probe(trimmedFile, ffprobeBin);
             log('2/6 duration:', meta.duration.toFixed(1), 's | audio:', meta.hasAudio ? 'yes' : 'no');
 
             log('3/6 generating webp…');
-            await withTimeout(makeAnimatedWebp(trimmedFile, webpFile), STEP_TIMEOUT, 'webp');
+            await withTimeout(makeAnimatedWebp(trimmedFile, webpFile, ffmpegBin), STEP_TIMEOUT, 'webp');
             log('3/6 webp:', fs.statSync(webpFile).size, 'bytes');
 
             let audioBuffer = null;
             if (meta.hasAudio) {
-                await withTimeout(makeM4aAudio(trimmedFile, audioFile), STEP_TIMEOUT, 'm4a');
+                await withTimeout(makeM4aAudio(trimmedFile, audioFile, ffmpegBin), STEP_TIMEOUT, 'm4a');
                 audioBuffer = fs.readFileSync(audioFile);
                 log('3/6 m4a:', audioBuffer.length, 'bytes');
             }
@@ -235,7 +309,7 @@ module.exports = {
                 ...(audioMessage ? { audioMessage } : {}),
             };
 
-            const content   = audioMessage
+            const content = audioMessage
                 ? { audioStickerMessage: { message: { stickerMessage } } }
                 : { stickerMessage };
 
