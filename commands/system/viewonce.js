@@ -2,100 +2,152 @@
 /*
  * VV.JS — View-once reveal | MADARA X-MD
  *
- * Attempts (in order):
- *   1) stored copy from lib/vv-store (captured when message first arrived)
- *   2) attached copy WhatsApp puts in contextInfo (usability-checked — often empty shell)
- *   3) requestPlaceholderResend to the sender's phone (25s wait)
+ * HOW IT WORKS (two-part system):
  *
- * Requires:
- *   lib/vv-store.js  — attachVvStore(sock) called in pairManager after each socket creation
+ *   PART 1 — Auto-capture (in pairManager.js messages.upsert, runs for every message):
+ *     When a view-once message arrives, it is downloaded IMMEDIATELY and stored in the
+ *     global vvCache Map keyed by message ID. This is the only window where the media
+ *     keys are still valid — WA invalidates them once the message is "opened".
+ *
+ *   PART 2 — Command (.vv / .viewonce):
+ *     Looks up the stanzaId of the replied message in vvCache and forwards the buffer.
+ *     If the cache misses (message arrived before bot restart), it falls back to
+ *     requestPlaceholderResend with a 25s wait.
+ *
+ * Place this file at: commands/utility/vv.js
+ * No separate lib/vv-store.js needed — cache lives here as a module-level Map.
  */
 
 const { downloadContentFromMessage, downloadMediaMessage } = require('@itsliaaa/baileys');
 const pino = require('pino');
-const { getStoredMessage } = require('../../lib/vv-store');
 
 const silentLogger = pino({ level: 'silent' });
-const WAIT_PHONE_MS = 25000;
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── Global cache ──────────────────────────────────────────────────────────────
+// Keyed by message ID → { type, buf, mimetype, ptt }
+// Shared across requires because Node caches modules.
+if (!global.__vvCache) global.__vvCache = new Map();
+const vvCache = global.__vvCache;
+const VV_CACHE_LIMIT = 200;
 
-function unwrap(message) {
-    let cur = message, viewOnce = false;
+// ── Auto-capture (call this from pairManager messages.upsert BEFORE handler) ─
+
+function extractViewOnce(message) {
+    if (!message) return null;
+    // Unwrap wrappers
+    let cur = message;
     for (let i = 0; i < 8 && cur; i++) {
-        const vo = cur.viewOnceMessage || cur.viewOnceMessageV2 || cur.viewOnceMessageV2Extension;
-        if (vo?.message) { viewOnce = true; cur = vo.message; continue; }
-        const wrap = cur.ephemeralMessage || cur.documentWithCaptionMessage || cur.editedMessage;
+        const vo = cur.viewOnceMessageV2 || cur.viewOnceMessage || cur.viewOnceMessageV2Extension;
+        if (vo?.message) { cur = vo.message; break; }
+        const wrap = cur.ephemeralMessage || cur.documentWithCaptionMessage || cur.editedMessage || cur.deviceSentMessage;
         if (wrap?.message) { cur = wrap.message; continue; }
         break;
     }
-    const type = cur?.imageMessage ? 'image' : cur?.videoMessage ? 'video' : cur?.audioMessage ? 'audio' : null;
-    return { cur, type, media: type ? cur[`${type}Message`] : null, viewOnce };
-}
-
-const usable = (u) => !!(u?.type && u.media?.mediaKey && (u.media.directPath || u.media.url));
-
-function stored(sock, key) {
-    try {
-        const m = getStoredMessage(sock, key);
-        return m?.message || m || null;
-    } catch (e) {
-        console.error('[VV] stored copy read failed:', e?.message || e);
-        return null;
+    // Also check flat viewOnce flag
+    const imgMsg = cur?.imageMessage;
+    const vidMsg = cur?.videoMessage;
+    const audMsg = cur?.audioMessage;
+    if (imgMsg && (imgMsg.viewOnce || message.viewOnceMessage || message.viewOnceMessageV2)) {
+        return { type: 'image', media: imgMsg, cur };
     }
+    if (vidMsg && (vidMsg.viewOnce || message.viewOnceMessage || message.viewOnceMessageV2)) {
+        return { type: 'video', media: vidMsg, cur };
+    }
+    if (audMsg && (audMsg.viewOnce || message.viewOnceMessage || message.viewOnceMessageV2)) {
+        return { type: 'audio', media: audMsg, cur };
+    }
+    // Deeper check: viewOnceMessageV2 inner
+    const voMsg = message.viewOnceMessageV2?.message || message.viewOnceMessage?.message || message.viewOnceMessageV2Extension?.message;
+    if (voMsg?.imageMessage) return { type: 'image', media: voMsg.imageMessage, cur: voMsg };
+    if (voMsg?.videoMessage) return { type: 'video', media: voMsg.videoMessage, cur: voMsg };
+    if (voMsg?.audioMessage) return { type: 'audio', media: voMsg.audioMessage, cur: voMsg };
+    return null;
 }
 
-async function downloadBuffer(sock, key, u) {
+async function captureViewOnce(sock, msg) {
     try {
-        return await downloadMediaMessage({ key, message: u.cur }, 'buffer', {}, {
-            logger: silentLogger,
-            reuploadRequest: msg => sock.updateMediaMessage(msg),
+        const id = msg?.key?.id;
+        if (!id || msg.key.fromMe) return;
+        if (vvCache.has(id)) return; // already captured
+
+        const vo = extractViewOnce(msg.message);
+        if (!vo) return;
+        if (!vo.media?.mediaKey) return; // empty shell, nothing to download
+
+        // Download immediately
+        let buf;
+        try {
+            buf = await downloadMediaMessage(
+                { key: msg.key, message: { [`${vo.type}Message`]: vo.media } },
+                'buffer', {},
+                { logger: silentLogger, reuploadRequest: m => sock.updateMediaMessage(m) }
+            );
+        } catch (_) {
+            const stream = await downloadContentFromMessage(vo.media, vo.type);
+            const chunks = [];
+            for await (const chunk of stream) chunks.push(chunk);
+            buf = Buffer.concat(chunks);
+        }
+
+        if (!Buffer.isBuffer(buf) || !buf.length) return;
+
+        // Store
+        if (vvCache.size >= VV_CACHE_LIMIT) {
+            vvCache.delete(vvCache.keys().next().value);
+        }
+        vvCache.set(id, {
+            type    : vo.type,
+            buf,
+            mimetype: vo.media.mimetype || (vo.type === 'image' ? 'image/jpeg' : vo.type === 'video' ? 'video/mp4' : 'audio/ogg; codecs=opus'),
+            ptt     : !!vo.media.ptt,
+            sender  : msg.key.participant || msg.key.remoteJid,
         });
-    } catch (_) {
-        const stream = await downloadContentFromMessage(u.media, u.type);
-        const chunks = [];
-        for await (const chunk of stream) chunks.push(chunk);
-        return Buffer.concat(chunks);
+        console.log(`[VV-CACHE] stored ${vo.type} | id=${id} | size=${buf.length}`);
+    } catch (e) {
+        // Silent — never crash the main handler
+        console.error('[VV-CACHE] capture failed:', e?.message);
     }
 }
+
+// ── Fallback: request phone resend ────────────────────────────────────────────
 
 function askPhone(sock, key) {
     return new Promise((resolve) => {
-        if (typeof sock.requestPlaceholderResend !== 'function') {
-            console.error('[VV] requestPlaceholderResend not available on this baileys build');
-            return resolve(null);
-        }
+        if (typeof sock.requestPlaceholderResend !== 'function') return resolve(null);
         let timer;
         const done = (v) => { clearTimeout(timer); sock.ev.off('messages.upsert', on); resolve(v); };
         const on = ({ messages }) => {
             for (const m of messages || []) {
                 if (m.key?.id !== key.id) continue;
-                const u = unwrap(m.message);
-                if (usable(u)) return done({ u, message: m.message });
+                const vo = extractViewOnce(m.message);
+                if (vo?.media?.mediaKey) return done({ vo, msg: m });
             }
         };
-        timer = setTimeout(() => { console.error('[VV] phone did not resend in time'); done(null); }, WAIT_PHONE_MS);
+        timer = setTimeout(() => done(null), 25000);
         sock.ev.on('messages.upsert', on);
         Promise.resolve(
             sock.requestPlaceholderResend({
-                remoteJid: key.remoteJid,
-                id: key.id,
-                fromMe: false,
+                remoteJid : key.remoteJid,
+                id        : key.id,
+                fromMe    : false,
                 ...(key.participant ? { participant: key.participant } : {}),
             })
-        ).catch((e) => { console.error('[VV] requestPlaceholderResend error:', e?.message || e); done(null); });
+        ).catch(() => done(null));
     });
 }
 
-// ── command ───────────────────────────────────────────────────────────────────
+// ── Command ───────────────────────────────────────────────────────────────────
 
 module.exports = {
-    name: 'vv',
-    aliases: ['viewonce', 'vo', 'rvo'],
+    name    : 'vv',
+    aliases : ['viewonce', 'vo', 'rvo'],
     category: 'utility',
-    desc: 'Reveal a view-once photo, video or voice note',
-    usage: '.vv (reply to a view-once message)',
+    desc    : 'Reveal a view-once photo, video or voice note',
+    usage   : '.vv (reply to a view-once message)',
     ownerOnly: true,
+
+    // Expose captureViewOnce so pairManager can import and call it
+    captureViewOnce,
 
     async execute(sock, msg, args, ctx) {
         const s = ctx.settings;
@@ -109,80 +161,81 @@ module.exports = {
 
         await ctx.react('👁️');
 
+        const stanzaId = ctxInfo.stanzaId;
         const key = {
-            remoteJid: msg.key.remoteJid || ctx.from,
-            id: ctxInfo.stanzaId,
+            remoteJid : msg.key.remoteJid || ctx.from,
+            id        : stanzaId,
             ...(ctxInfo.participant ? { participant: ctxInfo.participant } : {}),
-            ...(msg.key.remoteJidAlt ? { remoteJidAlt: msg.key.remoteJidAlt } : {}),
         };
 
-        const notes = [];
-        let found = null;
-
-        // Attempt 1 & 2 — stored copy, then attached (contextInfo) copy
-        for (const [label, source] of [
-            ['stored copy', stored(sock, key)],
-            ['attached copy', ctxInfo.quotedMessage],
-        ]) {
-            if (!source) { notes.push(`${label}: none`); continue; }
-            const u = unwrap(source);
-            if (!u.type)    { notes.push(`${label}: no image/video/audio inside`); continue; }
-            if (!usable(u)) { notes.push(`${label}: empty shell`); continue; }
-            found = u;
-            console.log('[VV] using', label);
-            break;
+        // ── Attempt 1: cache hit ─────────────────────────────────────────────
+        let cached = vvCache.get(stanzaId);
+        if (cached) {
+            console.log('[VV] cache hit for', stanzaId);
         }
 
-        // Attempt 3 — ask the phone to resend (always try if 1+2 failed)
-        if (!found) {
-            await ctx.reply(`⏳ Requesting media from sender's phone, please wait…${s.FOOTER}`);
+        // ── Attempt 2: phone resend ──────────────────────────────────────────
+        if (!cached) {
+            await ctx.reply(`⏳ Not in cache — requesting from sender's phone, please wait…${s.FOOTER}`);
             const back = await askPhone(sock, key);
-            if (back) { found = back.u; console.log('[VV] phone resent it'); }
-            else notes.push('phone: did not resend');
-        }
-
-        // Download
-        let buf = null;
-        if (found) {
-            try {
-                buf = await downloadBuffer(sock, key, found);
-                if (!Buffer.isBuffer(buf) || !buf.length) buf = null;
-            } catch (e) {
-                notes.push(`download error: ${e?.message || e}`);
+            if (back) {
+                // Download the resent message
+                try {
+                    const { vo, msg: resentMsg } = back;
+                    let buf;
+                    try {
+                        buf = await downloadMediaMessage(
+                            { key: resentMsg.key, message: { [`${vo.type}Message`]: vo.media } },
+                            'buffer', {},
+                            { logger: silentLogger, reuploadRequest: m => sock.updateMediaMessage(m) }
+                        );
+                    } catch (_) {
+                        const stream = await downloadContentFromMessage(vo.media, vo.type);
+                        const chunks = [];
+                        for await (const chunk of stream) chunks.push(chunk);
+                        buf = Buffer.concat(chunks);
+                    }
+                    if (Buffer.isBuffer(buf) && buf.length) {
+                        cached = {
+                            type    : vo.type,
+                            buf,
+                            mimetype: vo.media.mimetype,
+                            ptt     : !!vo.media.ptt,
+                            sender  : key.participant || key.remoteJid,
+                        };
+                        console.log('[VV] phone resent — downloaded', vo.type, buf.length, 'bytes');
+                    }
+                } catch (e) {
+                    console.error('[VV] resent download failed:', e?.message);
+                }
             }
         }
 
-        if (!buf) {
-            console.error('[VV] all attempts failed:', notes.join(' | '));
+        if (!cached) {
             await ctx.react('❌');
             return ctx.reply(
                 `⊘ *Could not retrieve the view-once media.*\n\n` +
-                `_WhatsApp deletes view-once content from its servers quickly after it's opened. ` +
-                `Ask them to send it again and reply immediately._\n\n` +
-                `> ${notes.join('\n> ')}${s.FOOTER}`
+                `_The bot must see the view-once message arrive live to cache it. ` +
+                `Ask them to send it again — the bot will capture it instantly and you can run \`.vv\` right after._${s.FOOTER}`
             );
         }
 
-        // Send
+        // ── Send ─────────────────────────────────────────────────────────────
         try {
-            const senderNum = String(ctx.sender || ctxInfo.participant || '').split('@')[0].split(':')[0];
-            const caption = `👁️ *View-Once Unveiled*\n*From:* @${senderNum}${s.FOOTER}`;
-            const mimetype = found.media?.mimetype;
+            const senderNum = String(cached.sender || ctxInfo.participant || '').split('@')[0].split(':')[0];
+            const caption   = `👁️ *View-Once Unveiled*\n*From:* @${senderNum}${s.FOOTER}`;
 
-            if (found.type === 'image') {
-                await sock.sendMessage(ctx.from, { image: buf, caption, mimetype: mimetype || 'image/jpeg' }, { quoted: msg });
-            } else if (found.type === 'video') {
-                await sock.sendMessage(ctx.from, { video: buf, caption, mimetype: mimetype || 'video/mp4' }, { quoted: msg });
+            if (cached.type === 'image') {
+                await sock.sendMessage(ctx.from, { image: cached.buf, caption, mimetype: cached.mimetype || 'image/jpeg' }, { quoted: msg });
+            } else if (cached.type === 'video') {
+                await sock.sendMessage(ctx.from, { video: cached.buf, caption, mimetype: cached.mimetype || 'video/mp4' }, { quoted: msg });
             } else {
-                await sock.sendMessage(ctx.from, {
-                    audio: buf,
-                    mimetype: mimetype || 'audio/ogg; codecs=opus',
-                    ptt: !!found.media?.ptt,
-                }, { quoted: msg });
+                await sock.sendMessage(ctx.from, { audio: cached.buf, mimetype: cached.mimetype || 'audio/ogg; codecs=opus', ptt: !!cached.ptt }, { quoted: msg });
             }
 
+            vvCache.delete(stanzaId); // consumed
             await ctx.react('✅');
-            console.log('[VV] revealed to', ctx.from, '| from:', senderNum);
+            console.log('[VV] revealed to', ctx.from, '| type:', cached.type);
         } catch (err) {
             await ctx.react('❌');
             ctx.reply(`❌ Failed to forward view-once: ${err?.message || err}${s.FOOTER}`);
