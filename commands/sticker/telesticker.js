@@ -1,25 +1,27 @@
 'use strict';
 
 const axios = require('axios');
-const crypto = require('crypto');
 const sharp = require('sharp');
-const { Sticker, StickerTypes } = require('../../lib/sticker');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const crypto = require('crypto');
+const zlib = require('zlib');
+const { spawn, execSync } = require('child_process');
+
+let FFMPEG;
+try {
+    const staticPath = require('ffmpeg-static');
+    FFMPEG = staticPath && fs.existsSync(staticPath) ? staticPath : 'ffmpeg';
+} catch {
+    FFMPEG = 'ffmpeg';
+}
 
 const PACK_MAX = 60;
-const CONCURRENCY = 5;
 const JOB_TTL_MS = 15 * 60 * 1000;
-const STICKER_SIZE = 512;
-const CORNER_RADIUS = 72;
-const TARGET_BYTES = 100 * 1024;
-const QUALITY_STEPS = [80, 65, 50, 35, 25];
 
 if (!global._telestickerJobs) global._telestickerJobs = new Map();
 const jobs = global._telestickerJobs;
-
-const ROUND_MASK = Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${STICKER_SIZE}" height="${STICKER_SIZE}">` +
-    `<rect width="${STICKER_SIZE}" height="${STICKER_SIZE}" rx="${CORNER_RADIUS}" ry="${CORNER_RADIUS}" fill="#fff"/></svg>`
-);
 
 function extractPackName(input) {
     if (!input) return null;
@@ -32,176 +34,251 @@ function safeSlice(str, n) {
     return Array.from(String(str || '')).slice(0, n).join('');
 }
 
-function uuid() {
-    if (crypto.randomUUID) return crypto.randomUUID();
-    return crypto.randomBytes(16).toString('hex').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
-}
-
 function chunk(arr, size) {
     const out = [];
     for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
     return out;
 }
 
-async function getBaileys() {
-    try { return require('@itsliaaa/baileys'); } catch {}
-    try { return require('baileys'); } catch {}
-    return null;
+function tmpFile(ext) {
+    return path.join(os.tmpdir(), `tgs-${crypto.randomBytes(6).toString('hex')}${ext}`);
+}
+
+function tmpDir() {
+    const d = path.join(os.tmpdir(), `tgs-${crypto.randomBytes(6).toString('hex')}`);
+    fs.mkdirSync(d, { recursive: true });
+    return d;
+}
+
+function cleanUp(...paths) {
+    for (const p of paths) {
+        if (!p) continue;
+        try {
+            const st = fs.statSync(p);
+            if (st.isDirectory()) fs.rmSync(p, { recursive: true, force: true });
+            else fs.unlinkSync(p);
+        } catch {}
+    }
+}
+
+async function dl(url) {
+    const r = await axios.get(url, {
+        responseType: 'arraybuffer',
+        timeout: 40000,
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
+    return Buffer.from(r.data);
+}
+
+/** Static WebP/PNG -> 512x512 static WebP. */
+async function staticToWebp(buf) {
+    return sharp(buf, { failOn: 'none' })
+        .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .webp({ quality: 90, lossless: false, effort: 4 })
+        .toBuffer();
 }
 
 /**
- * Normalize converted buffer into a 512x512 rounded WebP under TARGET_BYTES.
- * Falls back to the raw buffer if sharp rejects a specific frame/format.
+ * FFmpeg writes a zero RIFF length when WebP is streamed to stdout. WhatsApp
+ * and ffprobe can reject that container even when its frame chunks are valid.
  */
-async function polishStickerWebp(buffer) {
+function normalizeWebpContainer(buf) {
+    if (!Buffer.isBuffer(buf) || buf.length < 12) return null;
+    if (buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WEBP') return null;
+    const expectedSize = buf.length - 8;
+    if (buf.readUInt32LE(4) === expectedSize) return buf;
+    const normalized = Buffer.from(buf);
+    normalized.writeUInt32LE(expectedSize >>> 0, 4);
+    return normalized;
+}
+
+function hasAnimationChunks(buf) {
+    let offset = 12;
+    while (offset + 8 <= buf.length) {
+        const chunkId = buf.toString('ascii', offset, offset + 4);
+        const size = buf.readUInt32LE(offset + 4);
+        if (chunkId === 'ANIM' || chunkId === 'ANMF') return true;
+        if (size > buf.length - offset - 8) return false;
+        offset += 8 + size + (size % 2);
+    }
+    return false;
+}
+
+function validateAnimatedWebp(buf) {
+    const out = normalizeWebpContainer(buf);
+    if (!out || out.length < 1024 || !hasAnimationChunks(out)) return null;
+    return sharp(out, { animated: true }).metadata()
+        .then(meta => meta.width && meta.height && (!meta.pages || meta.pages >= 2) ? out : null)
+        .catch(() => null);
+}
+
+function runFfmpegToAnimatedWebp(args, inputBuf = null) {
+    return new Promise((resolve) => {
+        if (!FFMPEG) return resolve(null);
+        let settled = false;
+        const finish = val => { if (!settled) { settled = true; resolve(val); } };
+        const ff = spawn(FFMPEG, args);
+        const chunks = [];
+        const timer = setTimeout(() => { try { ff.kill('SIGKILL'); } catch {} finish(null); }, 30000);
+        ff.stdout.on('data', c => chunks.push(c));
+        ff.stderr.on('data', () => {});
+        ff.on('error', () => { clearTimeout(timer); finish(null); });
+        ff.on('close', async code => {
+            clearTimeout(timer);
+            if (code !== 0 || !chunks.length) {
+                console.error(`[telesticker] FFmpeg animation exit=${code}, bytes=${chunks.reduce((sum, c) => sum + c.length, 0)}`);
+                return finish(null);
+            }
+            const output = await validateAnimatedWebp(Buffer.concat(chunks));
+            if (!output) console.error('[telesticker] FFmpeg output failed animated-WebP validation');
+            finish(output);
+        });
+        ff.stdin.on('error', () => {});
+        if (inputBuf) ff.stdin.end(inputBuf);
+        else ff.stdin.end();
+    });
+}
+
+/** Any video/gif buffer -> animated WebP via ffmpeg stdin->stdout pipe. */
+function ffmpegToAnimatedWebp(inputBuf, inputFps = 15) {
+    return runFfmpegToAnimatedWebp([
+        '-hide_banner', '-loglevel', 'error',
+        '-i', 'pipe:0',
+        '-vf', `scale=512:512:force_original_aspect_ratio=decrease,fps=${inputFps}`,
+        '-vcodec', 'libwebp_anim',
+        '-lossless', '0',
+        '-compression_level', '6',
+        '-q:v', '75',
+        '-loop', '0',
+        '-preset', 'default',
+        '-an', '-vsync', '0',
+        '-f', 'webp',
+        'pipe:1',
+    ], inputBuf);
+}
+
+/** PNG frames rendered from a TGS Lottie file -> animated WebP. */
+function ffmpegFramesToAnimatedWebp(framesDir, inputFps = 30) {
+    return runFfmpegToAnimatedWebp([
+        '-hide_banner', '-loglevel', 'error',
+        '-framerate', String(inputFps),
+        '-i', path.join(framesDir, 'frame_%04d.png'),
+        '-vf', 'scale=512:512:force_original_aspect_ratio=decrease',
+        '-vcodec', 'libwebp_anim',
+        '-lossless', '0',
+        '-compression_level', '6',
+        '-q:v', '75',
+        '-loop', '0',
+        '-preset', 'default',
+        '-an', '-vsync', '0',
+        '-f', 'webp',
+        'pipe:1',
+    ]);
+}
+
+async function tgsToAnimatedWebp(buf) {
+    const jsonPath = tmpFile('.json');
+    const framesDir = tmpDir();
     try {
-        const meta = await sharp(buffer, { failOn: 'none' }).metadata();
-        if (!meta?.width || !meta?.height) return buffer;
-
-        const { data, info } = await sharp(buffer, { failOn: 'none', animated: !!meta.pages && meta.pages > 1 })
-            .rotate()
-            .resize(STICKER_SIZE, STICKER_SIZE, { fit: 'cover', position: sharp.strategy.attention })
-            .composite([{ input: ROUND_MASK, blend: 'dest-in' }])
-            .raw()
-            .toBuffer({ resolveWithObject: true });
-
-        let out = null;
-        for (const quality of QUALITY_STEPS) {
-            out = await sharp(data, {
-                raw: { width: info.width, height: info.height, channels: info.channels },
-            })
-                .webp({ quality, effort: 4 })
-                .toBuffer();
-            if (out.length <= TARGET_BYTES) break;
+        const jsonBuf = zlib.gunzipSync(buf);
+        fs.writeFileSync(jsonPath, jsonBuf);
+        let fps = 30;
+        try {
+            const lottie = JSON.parse(jsonBuf.toString('utf8'));
+            fps = Math.min(Math.max(lottie.fr || 30, 1), 30);
+        } catch {}
+        const pyScript = `
+import sys, os
+try:
+    import rlottie_python as rl
+    from PIL import Image
+    anim = rl.LottieAnimation.from_file(sys.argv[1])
+    total = anim.lottie_animation_get_totalframe()
+    out = sys.argv[2]
+    os.makedirs(out, exist_ok=True)
+    for i in range(total):
+        raw = anim.lottie_animation_render(i, width=512, height=512)
+        Image.frombuffer('RGBA', (512, 512), bytes(raw), 'raw', 'BGRA').save(
+            os.path.join(out, f'frame_{i:04d}.png')
+        )
+    print(total)
+except ImportError:
+    print('MISSING_RLOTTIE', file=sys.stderr)
+    sys.exit(2)
+except Exception as e:
+    print(f'ERR:{e}', file=sys.stderr)
+    sys.exit(1)
+`;
+        const pyPath = tmpFile('.py');
+        fs.writeFileSync(pyPath, pyScript);
+        let frameCount = 0;
+        try {
+            const out = execSync(`python3 "${pyPath}" "${jsonPath}" "${framesDir}"`, {
+                timeout: 60000,
+                encoding: 'utf8',
+            }).trim();
+            frameCount = parseInt(out, 10) || 0;
+        } catch (e) {
+            const stderr = (e.stderr || '').toString();
+            if (stderr.includes('MISSING_RLOTTIE')) return null;
+            console.error('[telesticker] tgs render error:', stderr.slice(-300));
+            return null;
+        } finally {
+            cleanUp(pyPath);
         }
-        return (out && out.length >= 100) ? out : buffer;
-    } catch {
-        return buffer;
+        if (frameCount === 0) return null;
+        return await ffmpegFramesToAnimatedWebp(framesDir, fps);
+    } catch (err) {
+        console.error('[telesticker] tgsToAnimatedWebp error:', err.message);
+        return null;
+    } finally {
+        cleanUp(jsonPath, framesDir);
     }
 }
 
-async function sendOnePack(sock, msg, ctx, packName, publisher, items) {
-    const packId = uuid().replace(/-/g, '').slice(0, 32);
-    const baileys = await getBaileys();
-    if (!baileys) throw new Error('Baileys module not available');
-    const { prepareWAMessageMedia, generateWAMessageFromContent } = baileys;
+/** Build a static tray cover from the first available sticker. */
+async function makePackCover(stickerItems) {
+    const staticItem = stickerItems.find(item => !item.isAnimated);
+    if (staticItem) return staticToWebp(staticItem.data);
 
-    const cleanName = safeSlice(packName, 28);
-    const cleanPublisher = safeSlice(publisher, 28);
-
-    // Tray must be PNG 96x96 - never send WebP as .png
-    const trayBuf = await sharp(items[0].buf, { failOn: 'none' })
-        .resize(96, 96, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-        .png()
-        .toBuffer();
-    if (!trayBuf?.length) throw new Error('tray PNG conversion failed - sharp required');
-
-    const stickersMeta = items.map((item, i) => ({
-        fileName: `${packId}_${i}.webp`,
-        isAnimated: !!item.isAnimated,
-        emojis: (item.emojis || ['⭐']).slice(0, 2),
-        accessibilityLabel: safeSlice(`${cleanName} (${i + 1})`, 32),
-        isLottie: false,
-        mimetype: 'image/webp',
-    }));
-
-    const trayMedia = await prepareWAMessageMedia({ image: trayBuf }, { upload: sock.waUploadToServer });
-    const im = trayMedia.imageMessage;
-    if (!im?.directPath) throw new Error('tray upload fail');
-
-    const stickerPackMessage = {
-        stickerPackId: packId,
-        name: cleanName,
-        publisher: cleanPublisher,
-        publisherPublic: cleanPublisher,
-        stickers: stickersMeta,
-        trayIconFileName: `${packId}.png`,
-        stickerPackOrigin: 'USER_CREATED',
-        stickerPackSize: items.length,
-        fileLength: trayBuf.length,
-        fileSha256: im.fileSha256,
-        fileEncSha256: im.fileEncSha256,
-        mediaKey: im.mediaKey,
-        directPath: im.directPath,
-        mediaKeyTimestamp: im.mediaKeyTimestamp,
-        thumbnailDirectPath: im.directPath,
-        thumbnailSha256: im.fileSha256,
-        thumbnailEncSha256: im.fileEncSha256,
-        thumbnailHeight: 96,
-        thumbnailWidth: 96,
-    };
-
-    const full = generateWAMessageFromContent(ctx.from, { stickerPackMessage }, { userJid: sock.user?.id, quoted: msg });
-    await sock.relayMessage(ctx.from, full.message, { messageId: full.key.id });
-    return { ok: true, mode: 'relay', count: items.length };
+    const first = stickerItems[0]?.data;
+    if (!first) return null;
+    try {
+        return await sharp(first, { animated: true, page: 0, pages: 1, failOn: 'none' })
+            .webp({ quality: 90, lossless: false, effort: 4 })
+            .toBuffer();
+    } catch (error) {
+        console.error('[telesticker] cover frame error:', error.message);
+        return null;
+    }
 }
 
-async function convertTelegramStickers(stickers, token, baseTitle, publisher, senderKey) {
-    const found = [];
-    const seenHash = new Set();
-    let cursor = 0;
-    let skipped = 0;
-
-    async function worker() {
-        while (cursor < stickers.length && jobs.get(senderKey)) {
-            const index = cursor++;
-            const st = stickers[index];
-            if (!st || st.is_animated) {
-                skipped++;
-                continue;
-            }
-            try {
-                const fileRes = await axios.get('https://api.telegram.org/bot' + token + '/getFile', {
-                    params: { file_id: st.file_id },
-                    timeout: 20000,
-                });
-                const filePath = fileRes?.data?.result?.file_path;
-                if (!filePath) {
-                    skipped++;
-                    continue;
-                }
-                const fileUrl = 'https://api.telegram.org/file/bot' + token + '/' + filePath;
-                const type = st.is_video ? StickerTypes.ANIMATED : StickerTypes.DEFAULT;
-                const stk = new Sticker(fileUrl, { pack: baseTitle, author: publisher, type });
-                let buf = await stk.toBuffer();
-                if (!buf || buf.length < 100) {
-                    skipped++;
-                    continue;
-                }
-                if (!st.is_video) {
-                    buf = await polishStickerWebp(buf);
-                }
-                const hash = crypto.createHash('sha1').update(buf).digest('hex');
-                if (seenHash.has(hash)) continue;
-                seenHash.add(hash);
-
-                found.push({
-                    index,
-                    buf,
-                    emojis: st.emoji ? [safeSlice(st.emoji, 4)] : ['⭐'],
-                    isAnimated: !!st.is_video,
-                });
-            } catch (e) {
-                console.error('[telesticker]', e.message);
-                skipped++;
-            }
-        }
+async function sendOnePack(sock, msg, ctx, packName, publisher, sourceTitle, items) {
+    const cover = await makePackCover(items);
+    if (!cover || cover.length < 512 || cover.length > 1024 * 1024) {
+        throw new Error('Could not create a valid static cover for this sticker pack');
     }
 
-    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-    found.sort((a, b) => a.index - b.index);
-    return { items: found.map(({ buf, emojis, isAnimated }) => ({ buf, emojis, isAnimated })), skipped };
+    await sock.sendMessage(ctx.from, {
+        stickers: items,
+        cover,
+        name: safeSlice(packName, 40),
+        publisher: safeSlice(publisher, 40),
+        description: `Imported from Telegram pack: ${sourceTitle}`,
+    }, { quoted: msg });
+
+    return { ok: true, mode: 'pack', count: items.length };
 }
 
 module.exports = {
     name: 'telesticker',
     aliases: ['tsticker', 'tgpack'],
     category: 'sticker',
-    desc: 'Telegram sticker set → WA pack(s), split every 60',
+    desc: 'Telegram sticker set -> WA pack(s), split every 60',
     usage: '.telesticker <t.me/addstickers/PackName>',
     async execute(sock, msg, args, ctx) {
         const s = ctx.settings;
-        const token = process.env.TELEGRAM_BOT_TOKEN || s.telegramToken;
+        const token = process.env.TELEGRAM_BOT_TOKEN || process.env.TG_BOT_TOKEN || s.telegramToken;
         if (!token) return ctx.reply('Telegram bot token missing (TELEGRAM_BOT_TOKEN).' + s.FOOTER);
         const packInput = extractPackName(args[0]);
         if (!packInput) return ctx.reply('Usage: `' + s.prefix + 'telesticker <t.me/addstickers/PackName>`' + s.FOOTER);
@@ -210,27 +287,70 @@ module.exports = {
         jobs.set(ctx.sender, Date.now() + JOB_TTL_MS);
         await ctx.react('⏳');
         try {
-            const res = await axios.get('https://api.telegram.org/bot' + token + '/getStickerSet', {
+            const tgApi = `https://api.telegram.org/bot${token}`;
+            const tgFile = `https://api.telegram.org/file/bot${token}`;
+
+            const res = await axios.get(`${tgApi}/getStickerSet`, {
                 params: { name: packInput },
                 timeout: 30000,
             });
             const set = res?.data?.result;
-            if (!set || !set.stickers?.length) {
+            if (!res?.data?.ok || !set || !set.stickers?.length) {
                 jobs.delete(ctx.sender);
                 return ctx.reply('Could not find that Telegram sticker pack.' + s.FOOTER);
             }
 
-            const baseTitle = safeSlice(set.title || packInput, 28);
+            const sourceTitle = set.title || packInput;
+            const baseTitle = safeSlice(sourceTitle, 28);
             const publisher = safeSlice(s.ownerName || s.botBrand || 'MADARA X-MD', 28);
             await ctx.reply(`📦 *${baseTitle}* — ${set.stickers.length} sticker(s)\nPack size: ${PACK_MAX} each (auto-split if more)…` + s.FOOTER);
 
-            const { items: all, skipped } = await convertTelegramStickers(
-                set.stickers,
-                token,
-                baseTitle,
-                publisher,
-                ctx.sender
-            );
+            const all = [];
+            let failed = 0;
+            let skipped = 0;
+
+            for (let i = 0; i < set.stickers.length; i++) {
+                if (!jobs.get(ctx.sender)) break;
+                const sticker = set.stickers[i];
+                try {
+                    const fileRes = await axios.get(`${tgApi}/getFile`, {
+                        params: { file_id: sticker.file_id },
+                        timeout: 20000,
+                    });
+                    const filePath = fileRes?.data?.result?.file_path;
+                    if (!filePath) { failed++; continue; }
+
+                    const rawBuf = await dl(`${tgFile}/${filePath}`);
+                    if (!rawBuf || rawBuf.length < 32) { failed++; continue; }
+
+                    let webpBuf;
+                    if (sticker.is_video || filePath.endsWith('.webm')) {
+                        webpBuf = await ffmpegToAnimatedWebp(rawBuf);
+                        if (!webpBuf) { failed++; continue; }
+                    } else if (sticker.is_animated || filePath.endsWith('.tgs')) {
+                        webpBuf = await tgsToAnimatedWebp(rawBuf);
+                        if (!webpBuf) { skipped++; continue; }
+                    } else {
+                        webpBuf = await staticToWebp(rawBuf);
+                        if (!webpBuf) { failed++; continue; }
+                    }
+
+                    if (!webpBuf || webpBuf.length < 1024 || webpBuf.length > 1024 * 1024) {
+                        failed++;
+                        continue;
+                    }
+
+                    all.push({
+                        data: webpBuf,
+                        isAnimated: hasAnimationChunks(webpBuf),
+                        emojis: sticker.emoji ? [sticker.emoji] : ['✨'],
+                        accessibilityLabel: safeSlice(sticker.emoji || `${baseTitle} sticker`, 80),
+                    });
+                } catch (e) {
+                    console.error('[telesticker]', e.message);
+                    failed++;
+                }
+            }
 
             if (!jobs.get(ctx.sender)) {
                 jobs.delete(ctx.sender);
@@ -238,7 +358,7 @@ module.exports = {
             }
             if (!all.length) {
                 jobs.delete(ctx.sender);
-                return ctx.reply('No convertible stickers.' + s.FOOTER);
+                return replyOrCtx(ctx, 'No convertible stickers.' + s.FOOTER);
             }
 
             const batches = chunk(all, PACK_MAX);
@@ -246,17 +366,25 @@ module.exports = {
             for (let b = 0; b < batches.length; b++) {
                 if (!jobs.get(ctx.sender)) break;
                 const label = batches.length === 1 ? baseTitle : safeSlice(`${baseTitle} (${b + 1}/${batches.length})`, 28);
-                const r = await sendOnePack(sock, msg, ctx, label, publisher, batches[b]);
+                const r = await sendOnePack(sock, msg, ctx, label, publisher, sourceTitle, batches[b]);
                 results.push({ label, ...r });
                 await new Promise(resolve => setTimeout(resolve, 1200));
             }
+
             jobs.delete(ctx.sender);
             await ctx.react('✅');
             const lines = results.map((r) => `• *${r.label}* — ${r.count} (${r.mode})`);
-            return ctx.reply('✅ Done\n' + lines.join('\n') + (skipped ? '\nSkipped: ' + skipped : '') + s.FOOTER);
+            let summary = '✅ Done\n' + lines.join('\n');
+            if (failed) summary += `\nFailed: ${failed}`;
+            if (skipped) summary += `\nSkipped (.tgs): ${skipped}`;
+            return ctx.reply(summary + s.FOOTER);
         } catch (e) {
             jobs.delete(ctx.sender);
             return ctx.reply('Error: ' + ((e.response && e.response.data && e.response.data.description) || e.message) + s.FOOTER);
         }
     },
 };
+
+function replyOrCtx(ctx, text) {
+    return ctx.reply(text);
+}
