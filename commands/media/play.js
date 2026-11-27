@@ -1,18 +1,7 @@
+// language: JavaScript, file: commands/media/play.js
 'use strict';
 /*
  * MADARA X-MD — .play (full track)
- *
- * Pipeline:
- *   search : yt-search → youtubei.js → thesync API → yt-dlp "ytsearch1:"
- *   audio  : yt-dlp (self-installing, JS-runtime aware, multi-client, cookie-safe)
- *            → optional own cobalt instance / public API → 30s preview (Deezer/iTunes)
- *
- * Optional env vars:
- *   YTDLP_PATH       absolute path to a yt-dlp binary
- *   YTDLP_PROXY      proxy for yt-dlp, e.g. http://user:pass@host:port (fixes datacenter-IP blocks)
- *   YT_COOKIES       cookie header string ("A=1; B=2") if you don't use cookies.txt
- *   COBALT_API_URL   your own cobalt instance (e.g. https://cobalt.yourdomain.com/)
- *   COBALT_API_KEY   api key for that instance (if it needs one)
  */
 const fs = require('fs');
 const os = require('os');
@@ -29,9 +18,6 @@ const MAX_AUDIO_BYTES = 40 * 1024 * 1024;
 const COOKIES_TXT = path.join(ROOT, 'cookies.txt');
 
 // ========== COOKIES (yt-dlp needs a Netscape file) ==========
-// Builds a throw-away Netscape cookie file in /tmp from cookies.txt (Netscape OR
-// one-line "A=1; B=2" header) or the YT_COOKIES env var. We never hand yt-dlp
-// the original file: it rewrites its cookie jar on exit and can corrupt it.
 function prepareCookieFile() {
     try {
         let raw = '';
@@ -62,7 +48,7 @@ function prepareCookieFile() {
     }
 }
 
-// ========== yt-dlp BINARY (find / download / update) ==========
+// ========== yt-dlp BINARY ==========
 const UPDATE_EVERY_MS = 12 * 3600 * 1000;
 let ytdlpBin = null;
 let ytdlpInit = null;
@@ -109,7 +95,6 @@ async function ensureYtDlp() {
         }
     }
     if (ytdlpBin) {
-        // YouTube breaks old yt-dlp builds constantly — self-update (no-op if pip/system managed)
         try {
             const { stdout } = await execFileAsync(ytdlpBin, ['-U'], { timeout: 45000 });
             console.log('[play] yt-dlp:', String(stdout).trim().split('\n').pop());
@@ -128,7 +113,6 @@ function getYtDlp() {
     return ytdlpInit;
 }
 
-// ffmpeg: prefer the bundled ffmpeg-static, else system ffmpeg, else null
 let ffmpegResolved;
 async function getFfmpeg() {
     if (ffmpegResolved !== undefined) return ffmpegResolved;
@@ -143,9 +127,6 @@ async function getFfmpeg() {
     return (ffmpegResolved = null);
 }
 
-// YouTube now needs an external JS runtime for signature/n-challenges (yt-dlp >= 2025.11.12).
-// Node is already here (engines: >=20), so hand it to yt-dlp. Very old builds don't know
-// these flags — then we retry without them.
 const JS_FLAGS = ['--js-runtimes', `node:${process.execPath}`, '--remote-components', 'ejs:github'];
 
 function runYtDlp(bin, args, timeout) {
@@ -168,16 +149,6 @@ async function ytdlp(bin, args, timeout) {
     }
 }
 
-let lastYtError = '';
-let lastHintAt = 0;
-function noteYtError(err) {
-    lastYtError = err;
-    if (/confirm you.?re not a bot|HTTP Error 403|cookies are no longer valid|PO Token/i.test(err) && Date.now() - lastHintAt > 10 * 60 * 1000) {
-        lastHintAt = Date.now();
-        console.log('[play] ⚠️ YouTube is blocking this server/cookies. Re-export a FRESH cookies.txt (incognito window, then close it) or set YTDLP_PROXY.');
-    }
-}
-
 // ========== SEARCH ==========
 async function searchYtSearch(query) {
     try {
@@ -194,17 +165,13 @@ async function searchYtSearch(query) {
             thumbnail: v.thumbnail || v.image || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
             url: `https://youtu.be/${v.videoId}`,
         };
-    } catch (e) {
-        console.log('[play] yt-search fail:', e.message?.slice(0, 120));
-        return null;
-    }
+    } catch (e) { return null; }
 }
 
 let ytClient = null;
 async function searchYoutubei(query) {
     try {
         const { Innertube, UniversalCache } = require('youtubei.js');
-        // no cookies here: search doesn't need them and stale cookies can break it
         if (!ytClient) ytClient = await Innertube.create({ cache: new UniversalCache(false), generate_session_locally: true });
         const search = await ytClient.search(query, { type: 'video' });
         const v = (search.results || []).find(r => r && r.type === 'Video' && r.id);
@@ -218,37 +185,26 @@ async function searchYoutubei(query) {
             thumbnail: v.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`,
             url: `https://youtu.be/${v.id}`,
         };
-    } catch (e) {
-        ytClient = null;
-        console.log('[play] youtubei search fail:', e.message?.slice(0, 120));
-        return null;
-    }
+    } catch (e) { ytClient = null; return null; }
 }
 
 async function searchThesync(query) {
     try {
         const { data } = await axios.get('https://apis.thesync.my.id/api/v1/search/music', {
             params: { action: 'search', q: query, filter: 'songs' },
-            timeout: 12000,
-            headers: { 'User-Agent': 'Madara-X-MD/1.2' },
+            timeout: 12000, headers: { 'User-Agent': 'Madara-X-MD/1.2' },
         });
         if (!data?.success || !Array.isArray(data.data) || !data.data.length) return null;
         const t = data.data[0];
         const videoId = t.videoId || t.id;
         if (!videoId) return null;
         return {
-            videoId,
-            title: t.title || query,
-            author: t.artist || 'Unknown',
-            duration: t.duration || 0,
-            views: t.plays || t.album || 'N/A',
+            videoId, title: t.title || query, author: t.artist || 'Unknown',
+            duration: t.duration || 0, views: t.plays || t.album || 'N/A',
             thumbnail: t.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
             url: t.youtubeUrl || `https://youtu.be/${videoId}`,
         };
-    } catch (e) {
-        console.log('[play] thesync search fail:', e.message?.slice(0, 120));
-        return null;
-    }
+    } catch (e) { return null; }
 }
 
 async function searchYtDlp(query) {
@@ -259,18 +215,12 @@ async function searchYtDlp(query) {
         const e = JSON.parse(stdout)?.entries?.[0];
         if (!e?.id) return null;
         return {
-            videoId: e.id,
-            title: e.title || query,
-            author: e.uploader || e.channel || 'Unknown',
-            duration: e.duration || 0,
-            views: e.view_count || 0,
+            videoId: e.id, title: e.title || query, author: e.uploader || e.channel || 'Unknown',
+            duration: e.duration || 0, views: e.view_count || 0,
             thumbnail: e.thumbnails?.[e.thumbnails.length - 1]?.url || `https://i.ytimg.com/vi/${e.id}/hqdefault.jpg`,
             url: `https://youtu.be/${e.id}`,
         };
-    } catch (e) {
-        console.log('[play] yt-dlp search fail:', String(e.stderr || e.message || '').slice(0, 120));
-        return null;
-    }
+    } catch (e) { return null; }
 }
 
 async function searchVideo(query) {
@@ -281,7 +231,7 @@ async function searchVideo(query) {
     return null;
 }
 
-// ========== yt-dlp DOWNLOAD (full song) ==========
+// ========== yt-dlp DOWNLOAD ==========
 const PRODUCED_EXTS = ['mp3', 'm4a', 'webm', 'opus', 'ogg'];
 const MIME_BY_EXT = { mp3: 'audio/mpeg', m4a: 'audio/mp4', webm: 'audio/ogg; codecs=opus', opus: 'audio/ogg; codecs=opus', ogg: 'audio/ogg; codecs=opus' };
 
@@ -300,8 +250,6 @@ async function fromYtDlp(video) {
     const cookieFile = prepareCookieFile();
     const outTpl = path.join(TMP, `madara_${video.videoId}.%(ext)s`);
 
-    // Fixed android/ios client lists are dead (they need PO tokens). Use yt-dlp's own default
-    // first, then clients that still work. android_vr does NOT support cookies → run it bare.
     const strategies = [
         { client: null, cookies: true },
         { client: null, cookies: false },
@@ -320,11 +268,7 @@ async function fromYtDlp(video) {
         const useFfmpeg = Boolean(ffmpeg) && !ffmpegBroken;
         cleanupTmp(video.videoId);
 
-        const args = [
-            '--no-playlist', '--no-warnings', '--no-check-certificates', '--geo-bypass',
-            '--socket-timeout', '20', '--retries', '2',
-            '-o', outTpl,
-        ];
+        const args = ['--no-playlist', '--no-warnings', '--no-check-certificates', '--geo-bypass', '--socket-timeout', '20', '--retries', '2', '-o', outTpl];
         if (useFfmpeg) {
             if (path.isAbsolute(ffmpeg)) args.push('--ffmpeg-location', ffmpeg);
             args.push('-f', 'bestaudio/best', '-x', '--audio-format', 'mp3', '--audio-quality', '0');
@@ -341,13 +285,12 @@ async function fromYtDlp(video) {
             console.log('[play] yt-dlp try', label, 'vid=', video.videoId);
             await ytdlp(bin, args, 150000);
 
-            let produced = null;
-            let ext = null;
+            let produced = null, ext = null;
             for (const e of PRODUCED_EXTS) {
                 const p = path.join(TMP, `madara_${video.videoId}.${e}`);
                 if (fs.existsSync(p) && fs.statSync(p).size > 1000) { produced = p; ext = e; break; }
             }
-            if (!produced) { console.log('[play] yt-dlp produced no file via', label); continue; }
+            if (!produced) continue;
 
             const buffer = fs.readFileSync(produced);
             cleanupTmp(video.videoId);
@@ -355,17 +298,14 @@ async function fromYtDlp(video) {
 
             console.log('[play] yt-dlp success:', (buffer.length / 1024 / 1024).toFixed(2) + 'MB via', label);
             return {
-                source: 'youtube-yt-dlp',
-                title: video.title, author: video.author, duration: video.duration,
+                source: 'youtube-yt-dlp', title: video.title, author: video.author, duration: video.duration,
                 views: video.views, thumbnail: video.thumbnail, url: video.url,
                 buffer, ext, mimetype: MIME_BY_EXT[ext] || 'audio/mpeg', isAudio: true,
             };
         } catch (e) {
             const err = String(e.stderr || e.message || '').trim();
             console.log('[play] yt-dlp fail', label, ':', err.split('\n').slice(-2).join(' | ').slice(0, 260));
-            noteYtError(err);
             if (/ffmpeg|ffprobe/i.test(err) && /not found|not installed|requires/i.test(err)) ffmpegBroken = true;
-            if (/Video unavailable|Private video|has been removed|not available in your country/i.test(err)) break;
         }
     }
     cleanupTmp(video.videoId);
@@ -374,10 +314,7 @@ async function fromYtDlp(video) {
 
 // ========== API FALLBACKS ==========
 async function downloadBuffer(url) {
-    const res = await axios.get(url, {
-        responseType: 'arraybuffer', timeout: 90000,
-        maxContentLength: MAX_AUDIO_BYTES, headers: { 'User-Agent': UA },
-    });
+    const res = await axios.get(url, { responseType: 'arraybuffer', timeout: 90000, maxContentLength: MAX_AUDIO_BYTES, headers: { 'User-Agent': UA } });
     return Buffer.from(res.data);
 }
 
@@ -385,24 +322,33 @@ async function fromApis(video) {
     const ytUrl = `https://www.youtube.com/watch?v=${video.videoId}`;
     const attempts = [];
 
-    // Your OWN cobalt instance (api.cobalt.tools blocks third-party use now) — cobalt v10 API
     if (process.env.COBALT_API_URL) {
         attempts.push(async () => {
             const headers = { Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': UA };
             if (process.env.COBALT_API_KEY) headers.Authorization = `Api-Key ${process.env.COBALT_API_KEY}`;
-            const { data } = await axios.post(process.env.COBALT_API_URL,
-                { url: ytUrl, downloadMode: 'audio', audioFormat: 'mp3' },
-                { timeout: 30000, headers });
+            const { data } = await axios.post(process.env.COBALT_API_URL, { url: ytUrl, downloadMode: 'audio', audioFormat: 'mp3' }, { timeout: 30000, headers });
             if (!['tunnel', 'redirect'].includes(data?.status) || !data.url) return null;
             return downloadBuffer(data.url);
         });
     }
 
-    // Public API — these rot often, so it's only a fallback
+    // 1. Ryzendesu API
     attempts.push(async () => {
-        const { data } = await axios.get(`https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(ytUrl)}`, {
-            timeout: 25000, headers: { 'User-Agent': 'Madara-X-MD/1.2' },
-        });
+        const { data } = await axios.get(`https://api.ryzendesu.vip/api/downloader/ytmp3?url=${encodeURIComponent(ytUrl)}`, { timeout: 25000 });
+        const url = data?.data?.url || data?.result?.url || data?.url;
+        return url ? downloadBuffer(url) : null;
+    });
+
+    // 2. Nexoracle API
+    attempts.push(async () => {
+        const { data } = await axios.get(`https://api.nexoracle.com/downloader/ytmp3?url=${encodeURIComponent(ytUrl)}`, { timeout: 25000 });
+        const url = data?.result?.url || data?.result?.download || data?.url;
+        return url ? downloadBuffer(url) : null;
+    });
+
+    // 3. Siputzx API
+    attempts.push(async () => {
+        const { data } = await axios.get(`https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(ytUrl)}`, { timeout: 25000 });
         const url = data?.data?.dl || data?.result?.url || data?.url || data?.download;
         return url ? downloadBuffer(url) : null;
     });
@@ -413,20 +359,17 @@ async function fromApis(video) {
             if (buffer && buffer.length > 50_000) {
                 console.log('[play] API download success:', (buffer.length / 1024 / 1024).toFixed(2) + 'MB');
                 return {
-                    source: 'youtube-api',
-                    title: video.title, author: video.author, duration: video.duration,
+                    source: 'youtube-api', title: video.title, author: video.author, duration: video.duration,
                     views: video.views, thumbnail: video.thumbnail, url: video.url,
                     buffer, ext: 'mp3', mimetype: 'audio/mpeg', isAudio: true,
                 };
             }
-        } catch (e) {
-            console.log('[play] API download fail:', e.message?.slice(0, 120));
-        }
+        } catch (e) { console.log('[play] API download fail:', e.message?.slice(0, 120)); }
     }
     return null;
 }
 
-// ========== DEEZER / ITUNES 30s (last resort only) ==========
+// ========== DEEZER / ITUNES 30s ==========
 async function fromDeezer(query) {
     try {
         const { data } = await axios.get('https://api.deezer.com/search', { params: { q: query }, timeout: 10000 });
@@ -434,8 +377,7 @@ async function fromDeezer(query) {
         if (!t?.preview) return null;
         const audio = await axios.get(t.preview, { responseType: 'arraybuffer', timeout: 20000 });
         return {
-            source: 'Deezer Preview',
-            title: t.title, author: t.artist?.name, duration: t.duration,
+            source: 'Deezer Preview', title: t.title, author: t.artist?.name, duration: t.duration,
             views: 'N/A', thumbnail: t.album?.cover_xl, url: t.link,
             buffer: Buffer.from(audio.data), ext: 'mp3', mimetype: 'audio/mpeg', isAudio: true,
         };
@@ -449,8 +391,7 @@ async function fromItunes(query) {
         if (!t?.previewUrl) return null;
         const audio = await axios.get(t.previewUrl, { responseType: 'arraybuffer', timeout: 20000 });
         return {
-            source: 'iTunes Preview',
-            title: t.trackName, author: t.artistName,
+            source: 'iTunes Preview', title: t.trackName, author: t.artistName,
             duration: Math.floor(t.trackTimeMillis / 1000),
             views: 'N/A', thumbnail: t.artworkUrl100?.replace('100x100', '600x600'),
             url: t.trackViewUrl, buffer: Buffer.from(audio.data),
@@ -462,18 +403,13 @@ async function fromItunes(query) {
 // ========== MAIN ==========
 async function getAudio(query) {
     const video = await searchVideo(query);
-
     if (video) {
         const full = await fromYtDlp(video);
         if (full) return full;
-
         console.log('[play] yt-dlp failed, trying API downloads');
         const apiFull = await fromApis(video);
         if (apiFull) return apiFull;
-    } else {
-        console.log('[play] no YouTube result for query');
     }
-
     console.log('[play] all full sources failed → 30s preview');
     return (await fromDeezer(query)) || (await fromItunes(query)) || null;
 }
@@ -491,7 +427,6 @@ function formatViews(v) {
     return n.toLocaleString('en-US');
 }
 
-// ========== COMMAND ==========
 async function execute(sock, msg, args) {
     const from = msg.key.remoteJid;
     const query = args.join(' ').trim();
@@ -500,17 +435,13 @@ async function execute(sock, msg, args) {
     try { await sock.sendMessage(from, { react: { text: '🎵', key: msg.key } }); } catch {}
 
     let statusMsg = null;
-    try {
-        statusMsg = await sock.sendMessage(from, { text: '⏳ Searching & downloading full track…' }, { quoted: msg });
-    } catch {}
+    try { statusMsg = await sock.sendMessage(from, { text: '⏳ Searching & downloading full track…' }, { quoted: msg }); } catch {}
 
     const result = await getAudio(query);
     if (statusMsg?.key) {
         try { await sock.sendMessage(from, { delete: statusMsg.key }); } catch {}
     }
-    if (!result) {
-        return sock.sendMessage(from, { text: '❌ No audio found for: ' + query }, { quoted: msg });
-    }
+    if (!result) return sock.sendMessage(from, { text: '❌ No audio found for: ' + query }, { quoted: msg });
 
     const isPreview = /preview/i.test(result.source);
     const caption =
