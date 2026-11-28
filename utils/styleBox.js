@@ -52,6 +52,11 @@ function formatUserTag(userOrJid) {
     return cleanNumber ? `@${cleanNumber}` : '';
 }
 
+// Remove '*' characters cleanly
+function stripAsterisks(str) {
+    return String(str == null ? '' : str).replace(/\*+/g, '');
+}
+
 // Wrap a single paragraph into lines up to maxLen characters (Unicode-safe)
 function wrapParagraph(paragraph, maxLen) {
     const chars = [...paragraph];
@@ -89,7 +94,7 @@ function wrapParagraph(paragraph, maxLen) {
 
 // Wrap plain text into the Madara X-MD card with every line prefixed by ║
 function boxify(text, title = 'MADARA X-MD', options = {}) {
-    const raw = String(text == null ? '' : text);
+    const raw = stripAsterisks(text == null ? '' : text);
     const trimmed = raw.trim();
     if (!trimmed) return raw;
 
@@ -108,8 +113,10 @@ function boxify(text, title = 'MADARA X-MD', options = {}) {
 
     const tag = formatUserTag(user);
     const statusLine = status != null
-        ? status
+        ? stripAsterisks(status)
         : (tag ? `ᴍᴀᴅᴀʀᴀ • ${tag}` : 'ᴍᴀᴅᴀʀᴀ');
+
+    const cleanFooter = stripAsterisks(footer);
 
     const expandedLines = [];
     for (const rawLine of raw.split('\n')) {
@@ -131,10 +138,18 @@ function boxify(text, title = 'MADARA X-MD', options = {}) {
         `╠══════════════`,
         ...body.map((line) => (line === '' ? '║' : `║${line}`)),
         `╚══════════════`,
-        footer ? `   ▲ ${footer}` : null,
+        cleanFooter ? `   ▲ ${cleanFooter}` : null,
     ]
         .filter((part) => part !== null)
         .join('\n');
 }
 
-module.exports = { boldItalic, boldSans, field, divider, formatUserTag, boxify };
+module.exports = {
+    boldItalic,
+    boldSans,
+    field,
+    divider,
+    formatUserTag,
+    stripAsterisks,
+    boxify,
+};
