@@ -1,389 +1,88 @@
+// language: JavaScript, file: commands/system/menu.js
 'use strict';
+/*
+ * MADARA X-MD — .menu command
+ *
+ * This file is now a thin dispatcher:
+ *   .menu → renderRandomMenu() (same as pressing the MADARA MENU button in pain)
+ *   .menu stock → sendStockMenu() (interactive category list, for debugging)
+ *
+ * The old full menu logic has been moved to menu2.js (preserved for reference/fixing).
+ * All exports (sendStockMenu, sendCategoryMenu, etc.) are re-exported from menu2.js
+ * so other files that require them (randomMenu, handler) continue to work.
+ */
 
-const fs = require('fs');
+const fs   = require('fs');
 const path = require('path');
-const { getRandomBanner } = require('../../lib/menuBanner');
-const { menuBox } = require('../../lib/menuBox');
-const {
-    CATEGORY_META: CAT,
-    getMenuCategoryCatalog,
-    getCategoryCounts,
-    getCategoryMeta,
-    resolveCategory,
-    splitMenuLines,
-} = require('../../lib/menuCategories');
-const {
-    generateWAMessageFromContent,
-    proto,
-    prepareWAMessageMedia,
-} = require('@itsliaaa/baileys');
 
-const _SC = {
-    a: 'ᴀ', b: 'ʙ', c: 'ᴄ', d: 'ᴅ', e: 'ᴇ', f: 'ғ', g: 'ɢ', h: 'ʜ', i: 'ɪ', j: 'ᴊ',
-    k: 'ᴋ', l: 'ʟ', m: 'ᴍ', n: 'ɴ', o: 'ᴏ', p: 'ᴘ', q: 'Q', r: 'ʀ', s: 's', t: 'ᴛ',
-    u: 'ᴜ', v: 'ᴠ', w: 'ᴡ', x: 'x', y: 'ʏ', z: 'ᴢ'
-};
-function sc(str) {
-    return String(str).toLowerCase().split('').map(function (c) {
-        return _SC[c] || c;
-    }).join('');
-}
-function clockString(ms) {
-    var h = Math.floor(ms / 3600000);
-    var m = Math.floor(ms / 60000) % 60;
-    var s = Math.floor(ms / 1000) % 60;
-    return [h, m, s].map(function (v) {
-        return String(v).padStart(2, '0');
-    }).join(':');
+// ── Re-export everything from menu2.js so dependents don't break ──
+// menu2.js has sendStockMenu, sendCategoryMenu, sendCategoryDirectory, etc.
+let _menu2 = null;
+function menu2() {
+    if (!_menu2) _menu2 = require('./menu2');
+    return _menu2;
 }
 
-var MENU_IMG = path.join(process.cwd(), 'assets', 'menuimage.jpg');
-var MENU_VID = path.join(process.cwd(), 'assets', 'menuvideo.mp4');
+// ── Proxy-export the named exports callers depend on ──
+function sendStockMenu(sock, msg, args, ctx) {
+    return menu2().sendStockMenu(sock, msg, args, ctx);
+}
+function sendCategoryMenu(sock, msg, ctx, catKey) {
+    return menu2().sendCategoryMenu(sock, msg, ctx, catKey);
+}
+function sendCategoryDirectory(sock, msg, ctx) {
+    return menu2().sendCategoryDirectory(sock, msg, ctx);
+}
+
+// ── maybeSendMenuAudio (kept here so execute can call it after randommenu) ──
 var MENU_AUDIO = path.join(process.cwd(), 'assets', 'menu_audio.mp3');
-var DEFAULT_SKIN = 'pain';
-
-function greeting() {
-    var h = new Date().getHours();
-    if (h < 4) return 'ʜᴀᴘᴘʏ ᴇᴀʀʟʏ ʜᴏᴜʀs ✨';
-    if (h < 10) return 'ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ 🥱';
-    if (h < 15) return 'ɢᴏᴏᴅ ᴀғᴛᴇʀɴᴏᴏɴ 🫠';
-    if (h < 18) return 'ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌇';
-    return 'ɢᴏᴏᴅ ɴɪɢʜᴛ 🌙';
-}
-
-async function sendCategoryMenu(sock, msg, ctx, catKey) {
-    if (String(catKey).trim().toLowerCase() === 'more') {
-        return sendCategoryDirectory(sock, msg, ctx);
-    }
-    var s = ctx.settings;
-    catKey = resolveCategory(catKey);
-    var m = getCategoryMeta(catKey);
-    if (!m) return ctx.reply('❌ Unknown category: ' + catKey + s.FOOTER);
-
-    var getCategories = require('../../lib/loader').getCategories;
-    var cmds = (getCategories().get(catKey) || [])
-        .filter(function (c, i, arr) {
-            return arr.findIndex(function (x) { return x.name === c.name; }) === i;
-        })
-        .sort(function (a, b) { return a.name.localeCompare(b.name); });
-
-    if (!cmds.length) return ctx.reply('📭 No commands found in *' + m.l + '*.' + s.FOOTER);
-
-    var pages = splitMenuLines(cmds.map(function (c) {
-        return (s.prefix || '.') + c.name;
-    }));
-
-    for (var index = 0; index < pages.length; index++) {
-        var isLast = index === pages.length - 1;
-        var title = m.l.toUpperCase() + ' ᴄᴏᴍᴀɴᴅs';
-        if (pages.length > 1) title += ' · ' + (index + 1) + '/' + pages.length;
-
-        var lines = pages[index].slice();
-        if (isLast) {
-            lines.push('');
-            lines.push('_Use ' + s.prefix + 'help <cmd> for details_');
-        }
-
-        await sock.sendMessage(ctx.from, {
-            text: menuBox(m.e, title, lines) + s.FOOTER,
-            buttons: [{ buttonId: 'madara_back_menu', buttonText: { displayText: '⬅️ BACK TO MENU' }, type: 1 }],
-            headerType: 1
-        }, index === 0 && msg ? { quoted: msg } : {});
-    }
-}
-
-async function sendCategoryDirectory(sock, msg, ctx) {
-    var s = ctx.settings;
-    var getCategories = require('../../lib/loader').getCategories;
-    var categories = getCategories();
-    var catalog = getMenuCategoryCatalog(categories);
-    var counts = getCategoryCounts(categories);
-    var lines = Object.entries(catalog).map(function (entry) {
-        var key = entry[0];
-        var meta = entry[1];
-        return meta.e + ' *' + meta.l.toUpperCase() + '* — ' + (counts[key] || 0) +
-            ' commands\n   ' + (s.prefix || '.') + 'categorymenu ' + key;
-    });
-    await sock.sendMessage(ctx.from, {
-        text: menuBox('📂', 'ᴀʟʟ ᴄᴏᴍᴍᴀɴᴅ ᴄᴀᴛᴇɢᴏʀɪᴇs', lines) + s.FOOTER,
-        buttons: [{ buttonId: 'madara_back_menu', buttonText: { displayText: '⬅️ BACK TO MENU' }, type: 1 }],
-        headerType: 1
-    }, { quoted: msg });
-}
-
-async function prepareMenuMedia(sock, senderId) {
-    try {
-        if (fs.existsSync(MENU_IMG)) {
-            return await prepareWAMessageMedia(
-                { image: fs.readFileSync(MENU_IMG) },
-                { upload: sock.waUploadToServer }
-            );
-        }
-        if (fs.existsSync(MENU_VID)) {
-            return await prepareWAMessageMedia(
-                { video: fs.readFileSync(MENU_VID) },
-                { upload: sock.waUploadToServer }
-            );
-        }
-        var localBanner = getRandomBanner(senderId);
-        if (localBanner && fs.existsSync(localBanner)) {
-            return await prepareWAMessageMedia(
-                { image: fs.readFileSync(localBanner) },
-                { upload: sock.waUploadToServer }
-            );
-        }
-    } catch (e) {
-        console.log('[menu] media prepare failed:', e.message);
-    }
-    return null;
-}
-
-function buildCategorySections(s) {
-    var categoryRows = Object.entries(getMenuCategoryCatalog()).map(function (entry) {
-        var key = entry[0];
-        var meta = entry[1];
-        return {
-            title: String(meta.e + ' ' + meta.l).slice(0, 24),
-            description: ('View ' + meta.l + ' commands').slice(0, 72),
-            id: 'madara_cat_' + key
-        };
-    });
-
-    var rows = categoryRows.concat([
-        {
-            title: '📢 CHANNEL',
-            description: ('Join ' + (s.botName || 'Madara') + ' channel').slice(0, 72),
-            id: 'madara_channel'
-        }
-    ]);
-
-    var sections = [];
-    for (var i = 0; i < rows.length; i += 10) {
-        var page = Math.floor(i / 10) + 1;
-        var totalPages = Math.ceil(rows.length / 10);
-        sections.push({
-            title: totalPages > 1 ? ('CATEGORIES ' + page + '/' + totalPages) : 'sᴇʟᴇᴄᴛ ᴄᴀᴛᴇɢᴏʀʏ',
-            rows: rows.slice(i, i + 10)
-        });
-    }
-    return sections;
-}
-
-async function sendDefaultInteractiveMenu(sock, msg, ctx, str, headerMedia, sections) {
-    var s = ctx.settings;
-
-    var menuMsg = generateWAMessageFromContent(ctx.from, {
-        interactiveMessage: proto.Message.InteractiveMessage.create({
-            body: proto.Message.InteractiveMessage.Body.create({ text: str }),
-            footer: proto.Message.InteractiveMessage.Footer.create({
-                text: '© Powered by ' + (s.botName || 'MADARA X-MD')
-            }),
-            header: proto.Message.InteractiveMessage.Header.create({
-                title: sc(s.botName || 'MADARA'),
-                hasMediaAttachment: !!(headerMedia && (headerMedia.imageMessage || headerMedia.videoMessage)),
-                imageMessage: (headerMedia && headerMedia.imageMessage) || undefined,
-                videoMessage: (headerMedia && headerMedia.videoMessage) || undefined
-            }),
-            nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-                buttons: [
-                    {
-                        name: 'quick_reply',
-                        buttonParamsJson: JSON.stringify({ display_text: '⚙️ SYSTEM', id: 'madara_cat_system' })
-                    },
-                    {
-                        name: 'quick_reply',
-                        buttonParamsJson: JSON.stringify({ display_text: '👥 GROUP', id: 'madara_cat_group' })
-                    },
-                    {
-                        name: 'single_select',
-                        buttonParamsJson: JSON.stringify({
-                            title: '📂 ᴍᴀᴅᴀʀᴀ ᴍᴇɴᴜ',
-                            sections: sections
-                        })
-                    }
-                ]
-            })
-        })
-    }, { quoted: msg });
-
-    // Mixed native-flow buttons (quick_reply + single_select) need the
-    // "mixed" / v9 biz node, same as the v1.2 menu. A bare single_select node
-    // can be relayed without error yet render no button on some clients.
-    await sock.relayMessage(ctx.from, menuMsg.message, {
-        messageId: menuMsg.key.id,
-        additionalNodes: [{
-            tag: 'biz',
-            attrs: {},
-            content: [{
-                tag: 'interactive',
-                attrs: { type: 'native_flow', v: '1' },
-                content: [{
-                    tag: 'native_flow',
-                    attrs: { v: '9', name: 'mixed' }
-                }]
-            }]
-        }]
-    });
-}
-
-async function sendDefaultFallbackMenu(sock, msg, ctx, str) {
-    var s = ctx.settings;
-    var sections = buildCategorySections(s);
-    var lines = [];
-    sections.forEach(function (sec) {
-        sec.rows.forEach(function (row) {
-            if (row.id === 'madara_channel') {
-                lines.push(row.title + ' — channel');
-            } else {
-                var key = String(row.id || '').replace(/^madara_cat_/, '');
-                lines.push(row.title + ' → ' + (s.prefix || '.') + 'categorymenu ' + key);
-            }
-        });
-    });
-
-    var body = str + '\n\n' + menuBox('📂', 'ᴄᴀᴛᴇɢᴏʀɪᴇs', lines) + (s.FOOTER || '');
-
-    var banner = null;
-    if (fs.existsSync(MENU_IMG)) banner = MENU_IMG;
-    else {
-        try {
-            var pick = getRandomBanner(ctx.sender);
-            if (pick && fs.existsSync(pick)) banner = pick;
-        } catch (_) {}
-    }
-
-    if (banner) {
-        await sock.sendMessage(ctx.from, {
-            image: fs.readFileSync(banner),
-            caption: body
-        }, { quoted: msg });
-        return;
-    }
-    if (fs.existsSync(MENU_VID)) {
-        await sock.sendMessage(ctx.from, {
-            video: fs.readFileSync(MENU_VID),
-            mimetype: 'video/mp4',
-            caption: body
-        }, { quoted: msg });
-        return;
-    }
-    await sock.sendMessage(ctx.from, { text: body }, { quoted: msg });
-}
-
 async function maybeSendMenuAudio(sock, from) {
     if (!fs.existsSync(MENU_AUDIO)) return;
     try {
         await sock.sendMessage(from, {
-            audio: fs.readFileSync(MENU_AUDIO),
+            audio   : fs.readFileSync(MENU_AUDIO),
             mimetype: 'audio/mpeg',
-            ptt: false
+            ptt     : false
         });
     } catch (e) {
         console.log('[menu] audio send failed:', e.message);
     }
 }
 
-// ── Stock (non-skin) menu ───────────────────────────────────────────────
-// Interactive menu with category list; falls back to media/text if relay fails.
-// Exported so lib/randomMenu.js can fall back here instead of execute(), which
-// would render the default skin (Pain) again and look like a dead button.
-async function sendStockMenu(sock, msg, args, ctx) {
-    var s = ctx.settings;
-    var prefix = s.prefix || '.';
-    var name = ctx.pushName || sc(s.ownerName);
-    var uptime = clockString(process.uptime() * 1000);
-    var now = new Date();
-    var date = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-    var time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-    var str =
-        '❤️ *_ʜᴇʟʟᴏ ' + name + ', ' + greeting() + '!_* 🥳\n' +
-        '╭═══〘 𝑴𝑨𝑫𝑨𝑹𝑨 𝑿-𝑴𝑫 〙═⊷❍\n' +
-        '┃✰│𝙽𝚊𝚖𝚎: ' + sc(s.botName) + '\n' +
-        '┃✰│𝚃𝚘𝚝𝚊𝚕: 1688+ ғᴇᴀᴛᴜʀᴇs\n' +
-        '┃✰│ᴠᴇʀꜱɪᴏɴ: v' + sc(s.version) + '\n' +
-        '┃✰│ᴏᴡɴᴇʀ: *' + sc(s.ownerName) + '*\n' +
-        '┃✰│ᴘʀᴇꜰɪx: *' + prefix + '*\n' +
-        '┃✰│ᴜᴘᴛɪᴍᴇ: ' + uptime + '\n' +
-        '┃✰│ᴅᴀᴛᴇ: ' + date + '\n' +
-        '┃✰│ᴛɪᴍᴇ: ' + time + '\n' +
-        '╰──────────────────\n\n' +
-        '*Q̲ᴜɪᴄᴋ:* ' + prefix + 'ʙᴏᴛᴍᴇɴᴜ | ' + prefix + 'ɢʀᴏᴜᴘᴍᴇɴᴜ | ' + prefix + 'ᴅʟᴍᴇɴᴜ | ' + prefix + 'ɢᴀᴍᴇs';
-
-    var headerMedia = await prepareMenuMedia(sock, ctx.sender);
-    var sections = buildCategorySections(s);
-
-    var menuSent = false;
-    try {
-        await sendDefaultInteractiveMenu(sock, msg, ctx, str, headerMedia, sections);
-        menuSent = true;
-    } catch (e) {
-        console.error('[menu] interactive failed → media/text fallback:', e.message);
-        try {
-            await sendDefaultFallbackMenu(sock, msg, ctx, str);
-            menuSent = true;
-        } catch (e2) {
-            console.error('[menu] fallback failed:', e2.message);
-            await sock.sendMessage(ctx.from, { text: str + (s.FOOTER || '') }, { quoted: msg });
-            menuSent = true;
-        }
-    }
-
-    if (menuSent) await maybeSendMenuAudio(sock, ctx.from);
-}
-
+// ── Main execute ──
 async function execute(sock, msg, args, ctx) {
-    // ".menu stock" skips the skin engine (handy for testing the stock menu)
+    // .menu stock → show stock interactive category list (debug / fallback)
     if (args && String(args[0] || '').toLowerCase() === 'stock') {
         return sendStockMenu(sock, msg, args, ctx);
     }
 
-    // ── Design engine: pain is the default skin ──
+    // .menu → renderRandomMenu() — same behaviour as pressing the MADARA MENU button
     try {
-        var menuEngine = require('../../lib/menuEngine');
-        var chatId = msg.chat || ctx.from;
-        var senderId = (msg.key && msg.key.participant) || msg.sender || ctx.sender || chatId;
-        var skin = menuEngine.getDesignIdFor(chatId, senderId);
-
-        // Force pain when unset / default
-        if (!skin || skin === 'default') skin = DEFAULT_SKIN;
-
-        try {
-            await menuEngine.render(sock, msg, args, skin, ctx);
-            await maybeSendMenuAudio(sock, ctx.from);
-            return;
-        } catch (e) {
-            console.log('[MENU] design "' + skin + '" failed → stock fallback:', e.message);
-            // If preferred skin failed and it wasn't pain, try pain once
-            if (skin !== DEFAULT_SKIN) {
-                try {
-                    await menuEngine.render(sock, msg, args, DEFAULT_SKIN, ctx);
-                    await maybeSendMenuAudio(sock, ctx.from);
-                    return;
-                } catch (e2) {
-                    console.log('[MENU] pain fallback also failed:', e2.message);
-                }
-            }
-        }
+        const { renderRandomMenu } = require('../../lib/randomMenu');
+        await renderRandomMenu(sock, msg, ctx);
+        // Send audio after random menu renders (randomMenu itself doesn't send audio)
+        await maybeSendMenuAudio(sock, ctx.from);
+        return;
     } catch (e) {
-        console.log('[MENU] skin outer error:', e.message);
+        console.log('[menu] renderRandomMenu failed → stock fallback:', e.message);
     }
 
-    // ── Stock menu (only if pain + design engine are dead) ──
+    // Last resort: stock menu
     return sendStockMenu(sock, msg, args, ctx);
 }
 
 module.exports = {
-    name: 'menu',
-    aliases: ['commands', 'cmds', 'help', 'h', 'main'],
+    name    : 'menu',
+    aliases : ['commands', 'cmds', 'help', 'h', 'main'],
     category: 'system',
-    desc: 'sʜᴏᴡ ᴄᴏᴍᴀɴᴅ ᴍᴇɴᴜ',
-    usage: '.menu',
+    desc    : 'sʜᴏᴡ ᴄᴏᴍᴀɴᴅ ᴍᴇɴᴜ',
+    usage   : '.menu',
     waitReact: false,
-    execute: execute,
-    sendStockMenu: sendStockMenu,
-    sendCategoryMenu: sendCategoryMenu,
-    sendCategoryDirectory: sendCategoryDirectory,
-    splitMenuLines: splitMenuLines,
-    CAT: CAT
+    execute,
+    sendStockMenu,
+    sendCategoryMenu,
+    sendCategoryDirectory,
+    // Keep splitMenuLines and CAT available for anything that imports them
+    get splitMenuLines() { return menu2().splitMenuLines; },
+    get CAT()           { return menu2().CAT; },
 };
