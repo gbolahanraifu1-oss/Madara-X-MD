@@ -374,11 +374,11 @@ async function execute(sock, msg, args, ctx) {
 }
 
 module.exports = {
-    name: 'menu',
+    name: 'menu2',
     aliases: ['commands', 'cmds', 'help', 'h', 'main'],
     category: 'system',
     desc: 'sʜᴏᴡ ᴄᴏᴍᴀɴᴅ ᴍᴇɴᴜ',
-    usage: '.menu',
+    usage: '.menu2',
     waitReact: false,
     execute: execute,
     sendStockMenu: sendStockMenu,
