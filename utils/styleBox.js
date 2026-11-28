@@ -45,11 +45,11 @@ function divider() {
 
 // Normalize a sender JID or tag into a clean "@number" mention string
 function formatUserTag(userOrJid) {
-    if (!userOrJid) return '@user';
+    if (!userOrJid) return '';
     const raw = String(userOrJid).trim();
-    const withoutDomain = raw.split('@').pop() || raw;
-    const cleanNumber = withoutDomain.split(':')[0];
-    return cleanNumber ? `@${cleanNumber}` : '@user';
+    const withoutDomain = raw.includes('@') ? raw.split('@')[0] : raw;
+    const cleanNumber = withoutDomain.replace(/^@/, '').split(':')[0];
+    return cleanNumber ? `@${cleanNumber}` : '';
 }
 
 // Wrap a single paragraph into lines up to maxLen characters (Unicode-safe)
@@ -106,9 +106,10 @@ function boxify(text, title = 'MADARA X-MD', options = {}) {
         maxWidth = 34,
     } = options;
 
+    const tag = formatUserTag(user);
     const statusLine = status != null
         ? status
-        : `Madara + ${formatUserTag(user)}`;
+        : (tag ? `ᴍᴀᴅᴀʀᴀ • ${tag}` : 'ᴍᴀᴅᴀʀᴀ');
 
     const expandedLines = [];
     for (const rawLine of raw.split('\n')) {
