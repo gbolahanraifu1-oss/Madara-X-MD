@@ -5,12 +5,19 @@
  * Primary: Megan APIs (apis.megan.qzz.io) — /download/mp3 + /download/dlmp3
  * Fallback: Deezer/iTunes 30s preview
  * Removed: yt-dlp, drizzle/thesync, ryzendesu, nexoracle, siputzx
+ *
+ * Megan response shape (confirmed from live log):
+ *   data.data.downloadUrl  — full signed MP3 URL (123tokyo.xyz)
+ *   data.data.title        — track title
+ *   data.data.videoId      — YouTube ID
+ *   data.data.format       — "mp3"
+ *   data.data.quality      — "320kbps"
  */
 
 const axios = require('axios');
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
-const MAX_AUDIO_BYTES = 60 * 1024 * 1024;
+const MAX_AUDIO_BYTES = 80 * 1024 * 1024;
 
 // ── Megan API key ──
 const MEGAN_KEY_DEFAULT = 'megan_feca93146d98848fcc856456ff5d2c9e';
@@ -22,132 +29,111 @@ function getMeganKey() {
     } catch { return process.env.MEGAN_API_KEY || MEGAN_KEY_DEFAULT; }
 }
 
-async function downloadBuffer(url) {
+// ── Download a signed MP3 URL to buffer ──
+// 123tokyo.xyz URLs are signed and expire — must follow redirects with correct headers
+async function downloadMeganAudio(url) {
     const res = await axios.get(url, {
         responseType: 'arraybuffer',
-        timeout: 90000,
+        timeout: 120000,
         maxContentLength: MAX_AUDIO_BYTES,
-        headers: { 'User-Agent': UA },
+        maxRedirects: 10,
+        headers: {
+            'User-Agent': UA,
+            'Accept': 'audio/mpeg,audio/*;q=0.9,*/*;q=0.8',
+            'Referer': 'https://apis.megan.qzz.io/',
+        },
+        validateStatus: s => s < 500,
     });
-    return Buffer.from(res.data);
+    if (res.status !== 200) throw new Error(`HTTP ${res.status} from download URL`);
+    const buf = Buffer.from(res.data);
+    if (!buf || buf.length < 10000) throw new Error(`Empty/tiny response (${buf?.length} bytes)`);
+    return buf;
 }
 
-// ── Extract download URL from various Megan response shapes ──
-function extractMeganUrl(data) {
-    // Try every known key name in order of likelihood
-    return data?.download_url
-        || data?.downloadUrl
-        || data?.url
-        || data?.result?.url
-        || data?.result?.download_url
-        || data?.result?.downloadUrl
-        || data?.data?.url
-        || data?.data?.download_url
-        || data?.data?.downloadUrl
-        || data?.link
-        || data?.mp3
-        || data?.audio
-        || null;
-}
-
-function extractMeganMeta(data) {
-    const r = data?.result || data?.data || data || {};
+// ── Megan response parser (confirmed shape from live log) ──
+function parseMeganResponse(data, query) {
+    const d = data?.data || {};
+    const dlUrl = d.downloadUrl || d.download_url || d.url || null;
+    if (!dlUrl) return null;
     return {
-        title    : r.title    || r.name   || null,
-        author   : r.artist   || r.author || r.channel || r.uploader || null,
-        duration : r.duration || 0,
-        thumbnail: r.thumbnail || r.thumb  || r.cover   || null,
-        url      : r.source_url || r.webpage_url || r.youtubeUrl || null,
+        dlUrl,
+        title    : d.title     || query,
+        videoId  : d.videoId   || null,
+        duration : d.duration  || 0,
+        thumbnail: d.thumbnail || (d.videoId ? `https://i.ytimg.com/vi/${d.videoId}/hqdefault.jpg` : null),
     };
 }
 
-// ── /download/mp3 — search by query or URL, multi-provider ──
+// ── /download/mp3 — search + multi-provider download ──
 async function fromMeganMp3(query) {
     const key = getMeganKey();
-    if (!key) { console.log('[play:megan] No MEGAN_API_KEY set'); return null; }
-
-    // Accept raw YT URLs or plain query strings
     const isUrl = /^https?:\/\//i.test(query);
     const params = { api_key: key };
     if (isUrl) params.url = query;
     else        params.q  = query;
 
-    try {
-        const { data } = await axios.get('https://apis.megan.qzz.io/download/mp3', {
-            params, timeout: 60000,
-            headers: { 'User-Agent': UA },
-        });
-        console.log('[play:megan/mp3] full response:', JSON.stringify(data).slice(0, 800));
+    const { data } = await axios.get('https://apis.megan.qzz.io/download/mp3', {
+        params, timeout: 65000,
+        headers: { 'User-Agent': UA },
+    });
 
-        const dlUrl = extractMeganUrl(data);
-        if (!dlUrl) {
-            console.log('[play:megan/mp3] no download URL found in above response');
-            return null;
-        }
-
-        const buffer = await downloadBuffer(dlUrl);
-        if (!buffer || buffer.length < 10_000) return null;
-
-        const meta = extractMeganMeta(data);
-        console.log('[play:megan/mp3] success', (buffer.length / 1024 / 1024).toFixed(2) + 'MB');
-        return {
-            source   : 'Megan APIs',
-            title    : meta.title    || query,
-            author   : meta.author   || 'Unknown',
-            duration : meta.duration || 0,
-            views    : 'N/A',
-            thumbnail: meta.thumbnail || null,
-            url      : meta.url       || null,
-            buffer, ext: 'mp3', mimetype: 'audio/mpeg', isAudio: true,
-        };
-    } catch (e) {
-        console.log('[play:megan/mp3] fail:', e.message?.slice(0, 200));
-        return null;
+    if (!data?.status?.success) {
+        throw new Error(`Megan /mp3 error: ${data?.status?.name || 'unknown'}`);
     }
+
+    const parsed = parseMeganResponse(data, query);
+    if (!parsed) throw new Error('No downloadUrl in /mp3 response: ' + JSON.stringify(data?.data).slice(0, 200));
+
+    console.log('[play:megan/mp3] got URL for:', parsed.title, '→', parsed.dlUrl.slice(0, 80) + '…');
+    const buffer = await downloadMeganAudio(parsed.dlUrl);
+    console.log('[play:megan/mp3] downloaded', (buffer.length / 1024 / 1024).toFixed(2) + 'MB');
+
+    return {
+        source   : 'Megan APIs',
+        title    : parsed.title,
+        author   : 'Unknown',
+        duration : parsed.duration,
+        views    : 'N/A',
+        thumbnail: parsed.thumbnail,
+        url      : parsed.videoId ? `https://youtu.be/${parsed.videoId}` : null,
+        buffer, ext: 'mp3', mimetype: 'audio/mpeg', isAudio: true,
+    };
 }
 
-// ── /download/dlmp3 — direct MP3 download ──
+// ── /download/dlmp3 — direct MP3 ──
 async function fromMeganDlmp3(query) {
     const key = getMeganKey();
-    if (!key) return null;
-
     const isUrl = /^https?:\/\//i.test(query);
     const params = { api_key: key };
     if (isUrl) params.url = query;
     else        params.q  = query;
 
-    try {
-        const { data } = await axios.get('https://apis.megan.qzz.io/download/dlmp3', {
-            params, timeout: 60000,
-            headers: { 'User-Agent': UA },
-        });
-        console.log('[play:megan/dlmp3] full response:', JSON.stringify(data).slice(0, 800));
+    const { data } = await axios.get('https://apis.megan.qzz.io/download/dlmp3', {
+        params, timeout: 65000,
+        headers: { 'User-Agent': UA },
+    });
 
-        const dlUrl = extractMeganUrl(data);
-        if (!dlUrl) {
-            console.log('[play:megan/dlmp3] no download URL found in above response');
-            return null;
-        }
-
-        const buffer = await downloadBuffer(dlUrl);
-        if (!buffer || buffer.length < 10_000) return null;
-
-        const meta = extractMeganMeta(data);
-        console.log('[play:megan/dlmp3] success', (buffer.length / 1024 / 1024).toFixed(2) + 'MB');
-        return {
-            source   : 'Megan APIs',
-            title    : meta.title    || query,
-            author   : meta.author   || 'Unknown',
-            duration : meta.duration || 0,
-            views    : 'N/A',
-            thumbnail: meta.thumbnail || null,
-            url      : meta.url       || null,
-            buffer, ext: 'mp3', mimetype: 'audio/mpeg', isAudio: true,
-        };
-    } catch (e) {
-        console.log('[play:megan/dlmp3] fail:', e.message?.slice(0, 200));
-        return null;
+    if (!data?.status?.success) {
+        throw new Error(`Megan /dlmp3 error: ${data?.status?.name || 'unknown'}`);
     }
+
+    const parsed = parseMeganResponse(data, query);
+    if (!parsed) throw new Error('No downloadUrl in /dlmp3 response: ' + JSON.stringify(data?.data).slice(0, 200));
+
+    console.log('[play:megan/dlmp3] got URL for:', parsed.title, '→', parsed.dlUrl.slice(0, 80) + '…');
+    const buffer = await downloadMeganAudio(parsed.dlUrl);
+    console.log('[play:megan/dlmp3] downloaded', (buffer.length / 1024 / 1024).toFixed(2) + 'MB');
+
+    return {
+        source   : 'Megan APIs',
+        title    : parsed.title,
+        author   : 'Unknown',
+        duration : parsed.duration,
+        views    : 'N/A',
+        thumbnail: parsed.thumbnail,
+        url      : parsed.videoId ? `https://youtu.be/${parsed.videoId}` : null,
+        buffer, ext: 'mp3', mimetype: 'audio/mpeg', isAudio: true,
+    };
 }
 
 // ── 30s preview fallbacks ──
@@ -184,13 +170,17 @@ async function fromItunes(query) {
 
 // ── Main pipeline ──
 async function getAudio(query) {
-    // 1. Megan /download/mp3 (search + download, multi-provider)
-    const r1 = await fromMeganMp3(query);
-    if (r1) return r1;
+    // 1. Megan /download/mp3
+    try {
+        const r = await fromMeganMp3(query);
+        if (r) return r;
+    } catch (e) { console.log('[play:megan/mp3] failed:', e.message?.slice(0, 150)); }
 
-    // 2. Megan /download/dlmp3 (direct)
-    const r2 = await fromMeganDlmp3(query);
-    if (r2) return r2;
+    // 2. Megan /download/dlmp3
+    try {
+        const r = await fromMeganDlmp3(query);
+        if (r) return r;
+    } catch (e) { console.log('[play:megan/dlmp3] failed:', e.message?.slice(0, 150)); }
 
     // 3. 30s preview fallbacks
     console.log('[play] Megan failed → 30s preview fallback');
@@ -251,11 +241,11 @@ async function execute(sock, msg, args) {
         caption,
         contextInfo: result.thumbnail ? {
             externalAdReply: {
-                title             : String(result.title || '').slice(0, 60),
-                body              : String(result.author || '').slice(0, 40),
-                mediaType         : 1,
-                thumbnailUrl      : result.thumbnail,
-                sourceUrl         : result.url || undefined,
+                title                : String(result.title || '').slice(0, 60),
+                body                 : String(result.author || '').slice(0, 40),
+                mediaType            : 1,
+                thumbnailUrl         : result.thumbnail,
+                sourceUrl            : result.url || undefined,
                 renderLargerThumbnail: true,
             },
         } : undefined,
