@@ -95,7 +95,7 @@ async function execute(sock, msg, args, ctx) {
     const str = `❤️ *_ʜᴇʟʟᴏ ${name}, ${greeting()}!_* 🥳
 ╭═══〘 𝑴𝑨𝑫𝑨𝑹𝑨 𝑿-𝑴𝑫 〙═══⊷❍
 ┃✰│𝙽𝚊𝚖𝚎: ${sc(s.botName)}
-┃✰│𝚃𝚘𝚝𝚊𝚕: 700+ ғᴇᴀᴛᴜʀᴇs
+┃✰│𝚃𝚘𝚝𝚊𝚕: " + total + " ғᴇᴀᴛᴜʀᴇs\n" +
 ┃✰│ᴠᴇʀꜱɪᴏɴ: v${sc(s.version)}
 ┃✰│ᴏᴡɴᴇʀ: *${sc(s.ownerName)}*
 ┃✰│ᴘʀᴇꜰɪx: *${prefix}*
