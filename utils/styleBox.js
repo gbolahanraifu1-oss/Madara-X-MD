@@ -43,8 +43,51 @@ function divider() {
     return `┄┄┄┄┄┄┄┄┄┄┄┄┄┄`;
 }
 
-// Wrap plain text into the Akatsuki / Crimson Command card.
-// Pass options like { status: 'ERROR', footer: 'Custom Tag' } per command.
+// Normalize a sender JID or tag into a clean "@number" mention string
+function formatUserTag(userOrJid) {
+    if (!userOrJid) return '@user';
+    const raw = String(userOrJid).trim();
+    const withoutDomain = raw.split('@').pop() || raw;
+    const cleanNumber = withoutDomain.split(':')[0];
+    return cleanNumber ? `@${cleanNumber}` : '@user';
+}
+
+// Wrap a single paragraph into lines up to maxLen characters (Unicode-safe)
+function wrapParagraph(paragraph, maxLen) {
+    const chars = [...paragraph];
+    if (chars.length <= maxLen) return [paragraph];
+
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    const wrapped = [];
+    let current = '';
+
+    for (const word of words) {
+        const wordChars = [...word];
+        if (wordChars.length > maxLen) {
+            if (current) {
+                wrapped.push(current);
+                current = '';
+            }
+            for (let i = 0; i < wordChars.length; i += maxLen) {
+                wrapped.push(wordChars.slice(i, i + maxLen).join(''));
+            }
+            continue;
+        }
+
+        const candidate = current ? `${current} ${word}` : word;
+        if ([...candidate].length <= maxLen) {
+            current = candidate;
+        } else {
+            wrapped.push(current);
+            current = word;
+        }
+    }
+
+    if (current) wrapped.push(current);
+    return wrapped;
+}
+
+// Wrap plain text into the Madara X-MD card with every line prefixed by ║
 function boxify(text, title = 'MADARA X-MD', options = {}) {
     const raw = String(text == null ? '' : text);
     const trimmed = raw.trim();
@@ -56,17 +99,34 @@ function boxify(text, title = 'MADARA X-MD', options = {}) {
     }
 
     const {
-        status = 'ＡＫＡＴＳＵＫＩ • ＯＮＬＩＮＥ',
+        user,
+        status,
         footer = boldItalic('Madara X-MD'),
         compact = false,
+        maxWidth = 34,
     } = options;
 
-    const lines = raw.split('\n').map((line) => (line.trim() === '' ? '' : `  ${line}`));
-    const body = compact ? lines.filter((line) => line !== '') : lines;
+    const statusLine = status != null
+        ? status
+        : `Madara + ${formatUserTag(user)}`;
+
+    const expandedLines = [];
+    for (const rawLine of raw.split('\n')) {
+        if (rawLine.trim() === '') {
+            expandedLines.push('');
+        } else {
+            const wrappedChunks = wrapParagraph(rawLine.trim(), maxWidth);
+            for (const chunk of wrappedChunks) {
+                expandedLines.push(`  ${chunk}`);
+            }
+        }
+    }
+
+    const body = compact ? expandedLines.filter((line) => line !== '') : expandedLines;
 
     return [
         `╔═❖ ${boldItalic(title)} ❖═╗`,
-        status ? `║  ● ${boldSans(status)}` : null,
+        statusLine ? `║  ● ${statusLine}` : null,
         `╠══════════════`,
         ...body.map((line) => (line === '' ? '║' : `║${line}`)),
         `╚══════════════`,
@@ -76,4 +136,4 @@ function boxify(text, title = 'MADARA X-MD', options = {}) {
         .join('\n');
 }
 
-module.exports = { boldItalic, boldSans, field, divider, boxify };
+module.exports = { boldItalic, boldSans, field, divider, formatUserTag, boxify };
