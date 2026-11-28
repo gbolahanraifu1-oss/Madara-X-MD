@@ -375,7 +375,7 @@ async function execute(sock, msg, args, ctx) {
 
 module.exports = {
     name: 'menu2',
-    aliases: ['commands', 'cmds', 'help', 'h', 'main'],
+    aliases: ['stockmenu'],
     category: 'system',
     desc: 'sʜᴏᴡ ᴄᴏᴍᴀɴᴅ ᴍᴇɴᴜ',
     usage: '.menu2',
